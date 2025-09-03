@@ -74,7 +74,7 @@
             </button>
             <button data-tab="relatorios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 110 2H3a1 1 0 01-1-1zm5 0a1 1 0 011-1h5a1 1 0 110 2H8a1 1 0 01-1-1zm5 0a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" /></svg>
-                <span class="align-middle">Relatórios</span>
+                <span class="align-middle">Relatório Mensal</span>
             </button>
             <button data-tab="envios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle" viewBox="0 0 20 20" fill="currentColor"><path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" /><path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM6 16a1 1 0 11-2 0 1 1 0 012 0z" /><path d="M11 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1h-1v1a1 1 0 01-1 1h-2a1 1 0 01-1-1v-1H12a1 1 0 01-1-1V5z" /></svg>
@@ -114,6 +114,7 @@
         const ENVIO_URL = ENVIO_GID ? `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${ENVIO_GID}` : '';
 
         // --- ESTADO DA APLICAÇÃO ---
+        const now = new Date();
         let state = {
             activeTab: 'estoque',
             inventoryData: [],
@@ -122,7 +123,9 @@
             filters: {
                 searchTerm: '',
                 category: 'all',
-                unitSearchTerm: ''
+                unitSearchTerm: '',
+                reportMonth: now.getMonth() + 1,
+                reportYear: now.getFullYear()
             },
             pagination: {
                 inventoryPage: 1,
@@ -167,7 +170,7 @@
         };
 
         const formatDate = (dateString) => {
-            if (!dateString || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) return 'N/A';
+            if (!dateString || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) return NaN;
             const [day, month, year] = dateString.split('/');
             return new Date(`${year}-${month}-${day}`);
         };
@@ -287,7 +290,7 @@
                 { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold text-slate-800' },
                 { header: 'Categoria', render: item => item['Categoria'] || 'N/A' },
                 { header: 'Quantidade', render: item => item['Quantidade'], class: 'text-center font-bold' },
-                { header: 'Unidade', render: item => item['Unidade'] || 'N/A' },
+                { header: 'Unid. Medida', render: item => item['Unidade'] || 'N/A' },
                 { header: 'Valor Unitário', render: item => formatCurrency(item['Valor Unitário']) },
                 { header: 'Valor Total', render: item => formatCurrency(item['Valor Total']) },
                 { header: 'Data de Validade', render: item => item['Data de Validade'] || 'N/A' }
@@ -316,7 +319,7 @@
                 { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold text-slate-800' },
                 { header: 'Categoria', render: item => item['Categoria'] || 'N/A' },
                 { header: 'Quantidade', render: item => `<span class="bg-red-100 text-red-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded-full">${item['Quantidade']}</span>`, class: 'text-center font-bold' },
-                { header: 'Unidade', render: item => item['Unidade'] || 'N/A' },
+                { header: 'Unid. Medida', render: item => item['Unidade'] || 'N/A' },
             ];
             view.innerHTML = `
                 <div class="p-4 mb-4 text-sm text-yellow-800 rounded-lg bg-yellow-50" role="alert">
@@ -377,112 +380,176 @@
         
         const renderReportsView = () => {
             const view = document.getElementById('relatorios-view');
-            const totalValue = state.inventoryData.reduce((sum, item) => sum + (item['Valor Total'] || 0), 0);
-            const totalItems = state.inventoryData.reduce((sum, item) => sum + item['Quantidade'], 0);
-            const lowStockItems = state.inventoryData.filter(item => item['Quantidade'] <= MIN_STOCK_THRESHOLD).length;
-            const expiringItems = state.inventoryData.filter(item => {
-                 const expiryDate = formatDate(item['Data de Validade']);
-                 if (!expiryDate || isNaN(expiryDate)) return false;
-                 const diffTime = expiryDate - new Date();
-                 const daysToExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                 return daysToExpire > 0 && daysToExpire <= EXPIRATION_THRESHOLD_DAYS;
-            }).length;
+            const { reportMonth, reportYear } = state.filters;
 
-            const itemsByCategory = state.inventoryData.reduce((acc, item) => {
-                const category = item['Categoria'] || 'Sem Categoria';
-                acc[category] = (acc[category] || 0) + item['Quantidade'];
+            const monthlySentData = state.sentItemsData.filter(item => {
+                const sentDate = formatDate(item['Data de Envio']);
+                return sentDate && (sentDate.getMonth() + 1) === reportMonth && sentDate.getFullYear() === reportYear;
+            });
+            
+            const totalValue = monthlySentData.reduce((sum, item) => sum + (item.valor_unitario * item.Quantidade), 0);
+            const totalItems = monthlySentData.reduce((sum, item) => sum + item.Quantidade, 0);
+
+            const itemsByProduct = monthlySentData.reduce((acc, item) => {
+                const product = item['Produto'] || 'Sem Nome';
+                if (!acc[product]) {
+                    acc[product] = { quantity: 0, value: 0 };
+                }
+                acc[product].quantity += item.Quantidade;
+                acc[product].value += item.valor_unitario * item.Quantidade;
                 return acc;
             }, {});
-            const maxCategoryValue = Math.max(1, ...Object.values(itemsByCategory)); // Evita divisão por zero
 
+            const topProducts = Object.entries(itemsByProduct)
+                .sort(([,a],[,b]) => b.quantity - a.quantity)
+                .slice(0, 10);
+            
+            const maxProductValue = Math.max(1, ...topProducts.map(([, data]) => data.quantity));
+
+            const itemsByUnit = monthlySentData.reduce((acc, item) => {
+                const unit = item['Unidade'] || 'Sem Unidade';
+                if(!acc[unit]) acc[unit] = [];
+                acc[unit].push(item);
+                return acc;
+            }, {});
+
+            const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+            const currentYear = new Date().getFullYear();
+            
             view.innerHTML = `
-                <!-- Cards de KPI -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                    <div class="bg-slate-50 p-6 rounded-lg shadow">
-                        <h3 class="text-sm font-medium text-slate-500">Valor Total do Estoque</h3>
-                        <p class="mt-2 text-3xl font-bold text-sky-600">${formatCurrency(totalValue)}</p>
-                    </div>
-                    <div class="bg-slate-50 p-6 rounded-lg shadow">
-                        <h3 class="text-sm font-medium text-slate-500">Total de Itens</h3>
-                        <p class="mt-2 text-3xl font-bold text-sky-600">${totalItems.toLocaleString('pt-BR')}</p>
-                    </div>
-                    <div class="bg-slate-50 p-6 rounded-lg shadow">
-                        <h3 class="text-sm font-medium text-slate-500">Itens com Estoque Baixo</h3>
-                        <p class="mt-2 text-3xl font-bold text-yellow-600">${lowStockItems}</p>
-                    </div>
-                    <div class="bg-slate-50 p-6 rounded-lg shadow">
-                        <h3 class="text-sm font-medium text-slate-500">Itens Vencendo em Breve</h3>
-                        <p class="mt-2 text-3xl font-bold text-orange-600">${expiringItems}</p>
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
+                    <h3 class="font-semibold text-lg mb-2">Filtros do Relatório</h3>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <select id="report-month-select" class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md">
+                            ${months.map((month, index) => `<option value="${index + 1}" ${reportMonth === (index + 1) ? 'selected' : ''}>${month}</option>`).join('')}
+                        </select>
+                        <select id="report-year-select" class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md">
+                            ${Array.from({length: 5}, (_, i) => currentYear - i).map(year => `<option value="${year}" ${reportYear === year ? 'selected' : ''}>${year}</option>`).join('')}
+                        </select>
                     </div>
                 </div>
 
-                <!-- Gráfico de Categorias -->
-                <div class="bg-white p-6 rounded-lg shadow">
-                    <h3 class="text-lg font-semibold mb-4">Quantidade de Itens por Categoria</h3>
+                ${monthlySentData.length === 0 ? '<p class="text-center text-slate-500 py-8">Nenhum envio registrado para este período.</p>' : `
+                <!-- Cards de KPI do Mês -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow border">
+                        <h3 class="text-sm font-medium text-slate-500">Valor Total Enviado (Mês)</h3>
+                        <p class="mt-2 text-3xl font-bold text-sky-600">${formatCurrency(totalValue)}</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow border">
+                        <h3 class="text-sm font-medium text-slate-500">Total de Itens Enviados (Mês)</h3>
+                        <p class="mt-2 text-3xl font-bold text-sky-600">${totalItems.toLocaleString('pt-BR')}</p>
+                    </div>
+                </div>
+
+                <!-- Gráfico de Produtos Mais Pedidos -->
+                <div class="bg-white p-6 rounded-lg shadow border mb-8">
+                    <h3 class="text-lg font-semibold mb-4">Top 10 Produtos Mais Enviados (Mês)</h3>
                     <div class="space-y-4">
-                        ${Object.entries(itemsByCategory).sort(([,a],[,b]) => b-a).map(([category, count]) => `
+                        ${topProducts.map(([product, data]) => `
                             <div class="w-full">
                                 <div class="flex justify-between mb-1">
-                                    <span class="text-sm font-medium text-slate-700">${category}</span>
-                                    <span class="text-sm font-medium text-slate-500">${count} itens</span>
+                                    <span class="text-sm font-medium text-slate-700">${product}</span>
+                                    <span class="text-sm font-medium text-slate-500">${data.quantity} itens</span>
                                 </div>
                                 <div class="w-full bg-slate-200 rounded-full h-4">
-                                    <div class="bg-sky-500 h-4 rounded-full" style="width: ${(count / maxCategoryValue) * 100}%"></div>
+                                    <div class="bg-sky-500 h-4 rounded-full" style="width: ${(data.quantity / maxProductValue) * 100}%"></div>
                                 </div>
                             </div>
                         `).join('')}
                     </div>
                 </div>
+                
+                <!-- Detalhes por Unidade -->
+                <div>
+                    <h3 class="text-xl font-semibold mb-4 text-slate-800">Detalhes de Envios por Unidade (Mês)</h3>
+                    <div class="space-y-6">
+                        ${Object.entries(itemsByUnit).sort().map(([unit, items]) => `
+                             <div class="bg-slate-50 rounded-lg shadow p-4">
+                                <h4 class="font-bold text-lg text-sky-700 mb-3">${unit}</h4>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead class="text-slate-600">
+                                            <tr>
+                                                <th class="text-left font-semibold pb-2 px-2">Produto</th>
+                                                <th class="text-right font-semibold pb-2 px-2">Quantidade</th>
+                                                <th class="text-right font-semibold pb-2 px-2">Valor Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        ${items.sort((a,b) => (b.Quantidade * b.valor_unitario) - (a.Quantidade * a.valor_unitario)).map(item => `
+                                            <tr class="border-t border-slate-200">
+                                                <td class="py-2 px-2">${item.Produto}</td>
+                                                <td class="py-2 px-2 text-right">${item.Quantidade} ${item.unidade_medida || ''}</td>
+                                                <td class="py-2 px-2 text-right font-semibold">${formatCurrency(item.Quantidade * item.valor_unitario)}</td>
+                                            </tr>
+                                        `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                `}
             `;
+
+            document.getElementById('report-month-select')?.addEventListener('change', e => {
+                state.filters.reportMonth = parseInt(e.target.value);
+                render();
+            });
+            document.getElementById('report-year-select')?.addEventListener('change', e => {
+                state.filters.reportYear = parseInt(e.target.value);
+                render();
+            });
         };
         
         const renderEnviosView = () => {
             const view = document.getElementById('envios-view');
 
-            const unitData = state.sentItemsData.reduce((acc, item) => {
-                const unit = item['Unidade'] || 'Unidade não especificada';
-                const product = item['Produto'] || 'Produto não especificado';
-                const quantity = item['Quantidade'] || 0;
-                if(!unit || !product || !quantity) return acc;
-
-                if (!acc[unit]) acc[unit] = {};
-                if (!acc[unit][product]) acc[unit][product] = 0;
-                
-                acc[unit][product] += quantity;
-                return acc;
-            }, {});
-
+            const validSentItems = state.sentItemsData.filter(item => item && item['Unidade']);
             const searchTerm = state.filters.unitSearchTerm.toLowerCase();
-            const filteredUnits = Object.keys(unitData).filter(unitName => unitName.toLowerCase().includes(searchTerm));
+            const uniqueUnits = [...new Set(validSentItems.map(item => item['Unidade']))];
+            const filteredUnits = uniqueUnits.filter(unitName => unitName.toLowerCase().includes(searchTerm));
 
             let html = `
                 <div class="mb-4">
                     <input type="text" id="unit-search-input" value="${state.filters.unitSearchTerm}" placeholder="Buscar por unidade..." class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-sky-500 focus:border-sky-500">
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="space-y-8">
             `;
 
             if (filteredUnits.length === 0) {
                 html += '<p class="text-center text-slate-500 py-8 col-span-full">Nenhuma unidade encontrada.</p>';
             } else {
                 filteredUnits.sort().forEach(unit => {
-                    const products = unitData[unit];
                     html += `
-                        <div class="bg-slate-50 rounded-lg shadow p-4 flex flex-col">
+                        <div class="bg-slate-50 rounded-lg shadow p-4">
                             <h3 class="font-bold text-lg text-sky-700 mb-3">${unit}</h3>
-                            <div class="flex-grow max-h-60 overflow-y-auto pr-2">
+                            <div class="overflow-x-auto">
                                 <table class="w-full text-sm">
                                     <thead class="text-slate-600">
                                         <tr>
-                                            <th class="text-left font-semibold pb-2">Produto</th>
-                                            <th class="text-right font-semibold pb-2">Qtd. Total</th>
+                                            <th class="text-left font-semibold pb-2 px-2">Data Envio</th>
+                                            <th class="text-left font-semibold pb-2 px-2">Produto</th>
+                                            <th class="text-right font-semibold pb-2 px-2">Quantidade</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        ${Object.entries(products).sort(([,a],[,b]) => b-a).map(([product, quantity]) => `
+                                        ${validSentItems
+                                            .filter(item => item['Unidade'] === unit)
+                                            .sort((a, b) => {
+                                                const dateA = formatDate(a['Data de Envio']);
+                                                const dateB = formatDate(b['Data de Envio']);
+                                                if (isNaN(dateA)) return 1;
+                                                if (isNaN(dateB)) return -1;
+                                                return dateB - dateA; // Mais recente primeiro
+                                            })
+                                            .map(item => `
                                             <tr class="border-t border-slate-200">
-                                                <td class="py-2">${product}</td>
-                                                <td class="py-2 text-right font-semibold">${quantity}</td>
+                                                <td class="py-2 px-2 whitespace-nowrap">${item['Data de Envio'] || 'N/A'}</td>
+                                                <td class="py-2 px-2">${item['Produto'] || 'N/A'}</td>
+                                                <td class="py-2 px-2 text-right font-semibold">${item['Quantidade'] || 0} ${item.unidade_medida || ''}</td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
@@ -547,8 +614,14 @@
                 }
 
                 const initialStock = parseCSV(estoqueCsv);
-                const sentItems = envioCsv ? parseCSV(envioCsv) : [];
-                state.sentItemsData = sentItems; // Store raw data for the new tab
+                const productDetailsMap = new Map(initialStock.map(item => [item['Código'], { unidade_medida: item['Unidade'], valor_unitario: item['Valor Unitário'] }]));
+
+                const sentItems = (envioCsv ? parseCSV(envioCsv) : []).map(item => {
+                    const details = productDetailsMap.get(item['Código']) || {};
+                    return { ...item, ...details };
+                });
+                
+                state.sentItemsData = sentItems;
 
                 const sentItemsMap = sentItems.reduce((map, item) => {
                     const key = item['Código'];
