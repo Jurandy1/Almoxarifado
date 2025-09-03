@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Semcas - Almoxarifado e Manutenção</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -45,11 +46,26 @@
         </header>
 
         <nav class="flex flex-wrap border-b border-slate-300 justify-center sm:justify-start mb-4">
-            <button data-tab="estoque" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">Estoque Geral</button>
-            <button data-tab="minimo" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">Sugestão de Compras</button>
-            <button data-tab="validade" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">Controle de Validade</button>
-            <button data-tab="relatorios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">Relatório Mensal</button>
-            <button data-tab="envios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">Envios por Unidade</button>
+            <button data-tab="estoque" class="tab flex items-center gap-2 py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                Estoque Geral
+            </button>
+            <button data-tab="minimo" class="tab flex items-center gap-2 py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
+                Sugestão de Compras
+            </button>
+            <button data-tab="validade" class="tab flex items-center gap-2 py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                Controle de Validade
+            </button>
+            <button data-tab="relatorios" class="tab flex items-center gap-2 py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                Relatório Mensal
+            </button>
+            <button data-tab="envios" class="tab flex items-center gap-2 py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10l2-2h8a1 1 0 001-1z" /><path stroke-linecap="round" stroke-linejoin="round" d="M17 8h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1v1a1 1 0 001 1h1m-6-1v1a1 1 0 001 1h1" /></svg>
+                Envios por Unidade
+            </button>
         </nav>
 
         <main id="content-area" class="bg-white rounded-lg shadow-lg p-6 min-h-[60vh]">
@@ -70,6 +86,7 @@
         const ESTOQUE_GID = '0';
         const ENVIO_GID = '812966811';
         const EXPIRATION_THRESHOLD_DAYS = 30;
+        const UNIT_TYPES = ['CRAS', 'CREAS', 'ABRIGO', 'CT', 'SEDE'];
 
         const now = new Date();
         let state = {
@@ -82,15 +99,16 @@
             filters: {
                 searchTerm: '',
                 category: 'all',
+                unitSearchTerm: '',
                 forecastMonths: 3, 
                 reportMonth: now.getMonth() + 1,
                 reportYear: now.getFullYear(),
+                reportUnitType: 'all',
+                reportSpecificUnit: 'all'
             },
-            pagination: {
-                currentPage: 1,
-                itemsPerPage: 15
-            }
         };
+        
+        let reportChart = null;
 
         const dom = {
             loader: document.getElementById('loader'),
@@ -120,7 +138,6 @@
                     });
                     row['Quantidade'] = parseInt(row['Quantidade'], 10) || 0;
                     row['Valor Unitário'] = parseCurrency(row['Valor Unitário']);
-                    row['Valor Total'] = parseCurrency(row['Valor Total']);
                     data.push(row);
                 }
             }
@@ -131,6 +148,12 @@
             if (!dateString || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) return null;
             const [day, month, year] = dateString.split('/');
             return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+        };
+        
+        const getUnitType = (unitName) => {
+            if (!unitName) return 'Outros';
+            const upperUnit = unitName.toUpperCase();
+            return UNIT_TYPES.find(type => upperUnit.startsWith(type)) || 'Outros';
         };
 
         const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
@@ -204,7 +227,6 @@
                     </select>
                 </div>
             ` + createTableHTML(filteredData, columns);
-             // Add event listeners after rendering
             document.getElementById('search-input')?.addEventListener('input', debounce(e => { state.filters.searchTerm = e.target.value; render(); }));
             document.getElementById('category-select')?.addEventListener('change', e => { state.filters.category = e.target.value; render(); });
         };
@@ -260,62 +282,147 @@
         
         const renderReportsView = () => {
             const view = document.getElementById('relatorios-view');
-             const { reportMonth, reportYear } = state.filters;
-             const monthlySentData = state.sentItemsData.filter(item => {
-                 const sentDate = formatDate(item['Data de Envio']);
-                 return sentDate && (sentDate.getMonth() + 1) === reportMonth && sentDate.getFullYear() === reportYear;
-             });
-             const totalValue = monthlySentData.reduce((sum, item) => sum + (item['Valor Unitário'] * item.Quantidade), 0);
-             const totalItems = monthlySentData.reduce((sum, item) => sum + item.Quantidade, 0);
-             const itemsByUnit = monthlySentData.reduce((acc, item) => {
-                const unit = item['Unidade'] || 'Sem Unidade';
-                if(!acc[unit]) acc[unit] = { items: [], totalValue: 0 };
-                acc[unit].items.push(item);
-                acc[unit].totalValue += (item['Valor Unitário'] || 0) * item.Quantidade;
-                return acc;
-             }, {});
-             const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-             view.innerHTML = `
+            const { reportMonth, reportYear, reportUnitType, reportSpecificUnit } = state.filters;
+
+            const availableUnitsForType = state.uniqueUnits.filter(unit => reportUnitType === 'all' || getUnitType(unit) === reportUnitType);
+
+            const monthlySentData = state.sentItemsData.filter(item => {
+                const sentDate = formatDate(item['Data de Envio']);
+                if (!sentDate) return false;
+
+                const matchesDate = (sentDate.getMonth() + 1) === reportMonth && sentDate.getFullYear() === reportYear;
+                const matchesUnitType = reportUnitType === 'all' || getUnitType(item['Unidade']) === reportUnitType;
+                const matchesSpecificUnit = reportSpecificUnit === 'all' || (item['Unidade'] || 'Outros') === reportSpecificUnit;
+                
+                return matchesDate && matchesUnitType && matchesSpecificUnit;
+            });
+
+            const totalValue = monthlySentData.reduce((sum, item) => sum + (item['Valor Unitário'] * item.Quantidade), 0);
+            const totalItems = monthlySentData.reduce((sum, item) => sum + item.Quantidade, 0);
+
+            const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+            
+            const detailsColumns = [
+                { header: 'Data Envio', render: item => item['Data de Envio'] || 'N/A' },
+                { header: 'Fundo', render: item => item['Fundo'] || 'N/A' },
+                { header: 'Código', render: item => item['Código'] || 'N/A' },
+                { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold' },
+                { header: 'Unidade', render: item => item['Unidade'] || 'N/A' },
+                { header: 'Qtd.', render: item => item.Quantidade, class: 'text-center' },
+                { header: 'Valor Total', render: item => formatCurrency(item.Quantidade * (item['Valor Unitário'] || 0)), class: 'text-right' },
+            ];
+
+            view.innerHTML = `
                 <div class="bg-slate-50 p-4 rounded-lg border mb-6">
-                    <div class="flex gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                         <select id="report-month-select" class="w-full p-2 border rounded-md">${months.map((m, i) => `<option value="${i + 1}" ${reportMonth === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select>
                         <select id="report-year-select" class="w-full p-2 border rounded-md">${Array.from({length: 5}, (_, i) => now.getFullYear() - i).map(y => `<option value="${y}" ${reportYear === y ? 'selected' : ''}>${y}</option>`).join('')}</select>
+                        <select id="report-unittype-select" class="w-full p-2 border rounded-md">
+                            <option value="all">Todos os Tipos</option>
+                            ${[...UNIT_TYPES, "Outros"].map(type => `<option value="${type}" ${reportUnitType === type ? 'selected' : ''}>${type}</option>`).join('')}
+                        </select>
+                         <select id="report-specific-unit-select" class="w-full p-2 border rounded-md">
+                            <option value="all">Todas as Unidades</option>
+                            ${availableUnitsForType.map(unit => `<option value="${unit}" ${reportSpecificUnit === unit ? 'selected' : ''}>${unit}</option>`).join('')}
+                        </select>
                     </div>
                 </div>
-                ${monthlySentData.length === 0 ? '<p class="text-center text-slate-500 py-8">Nenhum envio neste período.</p>' : `
-                <div class="grid grid-cols-2 gap-6 mb-8">
+                ${monthlySentData.length === 0 ? '<p class="text-center text-slate-500 py-8">Nenhum envio encontrado para os filtros selecionados.</p>' : `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     <div class="bg-white p-6 rounded-lg shadow border"><h3 class="text-sm text-slate-500">Valor Total Enviado</h3><p class="mt-2 text-3xl font-bold text-sky-600">${formatCurrency(totalValue)}</p></div>
                     <div class="bg-white p-6 rounded-lg shadow border"><h3 class="text-sm text-slate-500">Total de Itens Enviados</h3><p class="mt-2 text-3xl font-bold text-sky-600">${totalItems}</p></div>
                 </div>
-                <div class="space-y-6">${Object.entries(itemsByUnit).sort((a,b) => b[1].totalValue - a[1].totalValue).map(([unit, data]) => `
-                    <div class="bg-slate-50 rounded-lg shadow p-4"><h4 class="font-bold text-lg text-sky-700 mb-3">${unit}</h4>
-                    <table class="w-full text-sm">
-                     <thead><tr><th class="text-left pb-2">Produto</th><th class="text-right pb-2">Quantidade</th><th class="text-right pb-2">Valor</th></tr></thead>
-                     <tbody>${data.items.map(item => `<tr><td class="py-1">${item['Produto']}</td><td class="text-right">${item.Quantidade}</td><td class="text-right">${formatCurrency(item.Quantidade * (item['Valor Unitário'] || 0))}</td></tr>`).join('')}</tbody>
-                    </table>
-                    </div>`).join('')}
+                <div class="bg-white p-6 rounded-lg shadow border mb-8">
+                    <h3 id="chart-title" class="text-lg font-semibold mb-4"></h3>
+                    <canvas id="report-chart"></canvas>
+                </div>
+                <div class="mt-8">
+                    <h3 class="text-lg font-semibold mb-4">Detalhes dos Envios no Período</h3>
+                    ${createTableHTML(monthlySentData.sort((a,b) => (formatDate(b['Data de Envio']) || 0) - (formatDate(a['Data de Envio']) || 0)), detailsColumns)}
                 </div>`}
-             `;
+            `;
+
+            const chartCtx = document.getElementById('report-chart')?.getContext('2d');
+            const chartTitle = document.getElementById('chart-title');
+            if (chartCtx && chartTitle) {
+                if(reportChart) reportChart.destroy();
+                
+                let chartConfig;
+                if(reportSpecificUnit === 'all') {
+                    chartTitle.textContent = reportUnitType === 'all' ? 'Valor por Tipo de Unidade' : `Comparativo de Unidades: ${reportUnitType}`;
+                    const dataMap = monthlySentData.reduce((acc, item) => {
+                        const key = reportUnitType === 'all' ? getUnitType(item['Unidade']) : (item['Unidade'] || 'Outros');
+                        if (!acc[key]) acc[key] = 0;
+                        acc[key] += (item['Valor Unitário'] || 0) * item.Quantidade;
+                        return acc;
+                    }, {});
+
+                    chartConfig = {
+                        type: 'bar',
+                        data: { labels: Object.keys(dataMap), datasets: [{ data: Object.values(dataMap), backgroundColor: 'rgba(2, 132, 199, 0.6)' }] },
+                        options: { responsive: true, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+                    };
+                } else {
+                    chartTitle.textContent = `Distribuição de Custos por Categoria: ${reportSpecificUnit}`;
+                    const dataMap = monthlySentData.reduce((acc, item) => {
+                        const key = item['Categoria'] || 'Sem Categoria';
+                        if (!acc[key]) acc[key] = 0;
+                        acc[key] += (item['Valor Unitário'] || 0) * item.Quantidade;
+                        return acc;
+                    }, {});
+
+                    chartConfig = {
+                        type: 'doughnut',
+                        data: {
+                            labels: Object.keys(dataMap),
+                            datasets: [{ data: Object.values(dataMap), backgroundColor: ['#0284c7', '#f97316', '#16a34a', '#e11d48', '#6d28d9', '#facc15'] }]
+                        },
+                        options: { responsive: true, plugins: { legend: { position: 'top' } } }
+                    };
+                }
+                reportChart = new Chart(chartCtx, chartConfig);
+            }
+
              document.getElementById('report-month-select')?.addEventListener('change', e => { state.filters.reportMonth = parseInt(e.target.value); render(); });
              document.getElementById('report-year-select')?.addEventListener('change', e => { state.filters.reportYear = parseInt(e.target.value); render(); });
+             document.getElementById('report-unittype-select')?.addEventListener('change', e => { 
+                state.filters.reportUnitType = e.target.value; 
+                state.filters.reportSpecificUnit = 'all';
+                render(); 
+             });
+             document.getElementById('report-specific-unit-select')?.addEventListener('change', e => { state.filters.reportSpecificUnit = e.target.value; render(); });
         };
         
         const renderEnviosView = () => {
              const view = document.getElementById('envios-view');
-             const itemsByUnit = state.sentItemsData.reduce((acc, item) => {
-                const unit = item['Unidade'] || 'Sem Unidade';
-                if(!acc[unit]) acc[unit] = [];
-                acc[unit].push(item);
-                return acc;
-             }, {});
-             view.innerHTML = `<div class="space-y-8">${Object.entries(itemsByUnit).sort().map(([unit, items]) => `
-                <div class="bg-slate-50 rounded-lg shadow p-4"><h3 class="font-bold text-lg text-sky-700 mb-3">${unit}</h3>
-                <table class="w-full text-sm">
-                    <thead><tr><th class="text-left pb-2">Data</th><th class="text-left pb-2">Produto</th><th class="text-right pb-2">Quantidade</th></tr></thead>
-                    <tbody>${items.sort((a,b) => (formatDate(b['Data de Envio']) || 0) - (formatDate(a['Data de Envio']) || 0)).map(item => `
-                    <tr><td class="py-1">${item['Data de Envio']}</td><td>${item['Produto']}</td><td class="text-right">${item.Quantidade}</td></tr>`).join('')}</tbody>
-                </table>
-                </div>`).join('')}</div>`;
+             const searchTerm = state.filters.unitSearchTerm.toLowerCase();
+             const filteredUnits = state.uniqueUnits.filter(unit => unit.toLowerCase().includes(searchTerm));
+             
+             view.innerHTML = `
+                <div class="mb-6">
+                    <input type="text" id="unit-search-input" value="${state.filters.unitSearchTerm}" placeholder="Buscar por unidade..." class="w-full sm:w-1/2 p-3 border rounded-lg">
+                </div>
+                <div class="space-y-8">
+                ${(filteredUnits.length > 0 ? filteredUnits : (searchTerm ? [] : state.uniqueUnits)).map(unit => {
+                    const items = state.sentItemsData.filter(item => (item['Unidade'] || 'N/A') === unit);
+                    if(items.length === 0) return '';
+                    const columns = [
+                        { header: 'Data Envio', render: item => item['Data de Envio'] || 'N/A' },
+                        { header: 'Fundo', render: item => item['Fundo'] || 'N/A' },
+                        { header: 'Código', render: item => item['Código'] || 'N/A' },
+                        { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold' },
+                        { header: 'Quantidade', render: item => item.Quantidade, class: 'text-center font-bold' }
+                    ];
+                    return `
+                        <div class="bg-slate-50 rounded-lg shadow-md p-4">
+                            <h3 class="font-bold text-lg text-sky-700 mb-3">${unit}</h3>
+                            ${createTableHTML(items.sort((a,b) => (formatDate(b['Data de Envio']) || 0) - (formatDate(a['Data de Envio']) || 0)), columns)}
+                        </div>
+                    `;
+                 }).join('') || '<p class="text-center text-slate-500 py-8">Nenhuma unidade encontrada.</p>'}
+                </div>`;
+            
+             document.getElementById('unit-search-input')?.addEventListener('input', debounce(e => { state.filters.unitSearchTerm = e.target.value; render(); }));
         };
 
         const init = async () => {
@@ -325,7 +432,7 @@
             try {
                 const fetchSheet = async (gid) => {
                     const url = `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${gid}`;
-                    const response = await fetch(url, { cache: 'reload', mode: 'cors' });
+                    const response = await fetch(url);
                     if (!response.ok) throw new Error(`Falha ao carregar dados (GID: ${gid})`);
                     return response.text();
                 };
@@ -348,7 +455,10 @@
                 state.sentItemsData = sentItemsRaw.map(item => {
                     const key = `${item['Fundo']}-${item['Código']}`;
                     const details = productDetailsMap.get(key) || {};
-                    return { ...item, ...details };
+                    const envioUnidade = item['Unidade']; 
+                    const mergedItem = { ...item, ...details }; 
+                    mergedItem['Unidade'] = envioUnidade;
+                    return mergedItem;
                 });
 
                 const consumption = new Map();
