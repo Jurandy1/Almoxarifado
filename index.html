@@ -73,6 +73,10 @@
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 110 2H3a1 1 0 01-1-1zm5 0a1 1 0 011-1h5a1 1 0 110 2H8a1 1 0 01-1-1zm5 0a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" /></svg>
                 Relatórios
             </button>
+            <button data-tab="envios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" /><path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM6 16a1 1 0 11-2 0 1 1 0 012 0z" /><path d="M11 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1h-1v1a1 1 0 01-1 1h-2a1 1 0 01-1-1v-1H12a1 1 0 01-1-1V5z" /></svg>
+                Envios por Unidade
+            </button>
         </nav>
 
         <main id="content-area" class="bg-white rounded-b-lg shadow-lg p-6 min-h-[60vh]">
@@ -90,29 +94,15 @@
             <div id="minimo-view" class="view"></div>
             <div id="validade-view" class="view"></div>
             <div id="relatorios-view" class="view"></div>
+            <div id="envios-view" class="view"></div>
         </main>
     </div>
 
     <script type="module">
         // --- CONFIGURAÇÕES ---
         const SPREADSHEET_ID = '2PACX-1vSq5-5mNONPvPSFwcvqXl3u5ClieB-tTk6WDCe0Rtzk87zgFMb6YaaMe2s3m0eTYXKa1mp_Gyo8w7er';
-        const ESTOQUE_GID = '0'; // GID da aba "Estoque", geralmente 0 para a primeira
-        
-        // !!! ======================================================================= !!!
-        // !!!                     ATENÇÃO: AÇÃO OBRIGATÓRIA AQUI                      !!!
-        // !!! ======================================================================= !!!
-        // !!! O painel NÃO FUNCIONARÁ CORRETAMENTE até que você atualize o GID abaixo.!!!
-        // !!! O GID é o número de identificação da sua aba "Envio".                    !!!
-        // !!!                                                                         !!!
-        // !!!    COMO ENCONTRAR E CORRIGIR:                                           !!!
-        // 1. Abra sua planilha no Google Sheets.                                     !!!
-        // 2. Clique na aba/página chamada "Envio".                                   !!!
-        // 3. Olhe o link (URL) no seu navegador. Será algo como:                     !!!
-        //    https://docs.google.com/spreadsheets/d/..../edit#gid=123456789          !!!
-        // 4. Copie APENAS O NÚMERO do final (neste exemplo, 123456789).              !!!
-        // 5. Cole o número abaixo, substituindo o '1451380922' de exemplo.          !!!
-        // !!! ======================================================================= !!!
-        const ENVIO_GID = '812966811'; // <<< SUBSTITUA O NÚMERO AQUI, DENTRO DAS ASPAS!
+        const ESTOQUE_GID = '0';
+        const ENVIO_GID = '812966811';
         
         const MIN_STOCK_THRESHOLD = 10;
         const EXPIRATION_THRESHOLD_DAYS = 30;
@@ -124,10 +114,16 @@
         let state = {
             activeTab: 'estoque',
             inventoryData: [],
+            sentItemsData: [],
             categories: [],
             filters: {
                 searchTerm: '',
-                category: 'all'
+                category: 'all',
+                unitSearchTerm: ''
+            },
+            pagination: {
+                inventoryPage: 1,
+                itemsPerPage: 15
             }
         };
 
@@ -150,15 +146,12 @@
 
             for (let i = 1; i < lines.length; i++) {
                 if (lines[i].trim() === '') continue;
-                
                 const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-
                 if (values.length === headers.length) {
                     let row = {};
                     headers.forEach((header, index) => {
                         row[header] = values[index].trim().replace(/^"|"$/g, '');
                     });
-                    
                     row['Quantidade'] = parseInt(row['Quantidade']) || 0;
                     row['Valor Unitário'] = parseFloat(row['Valor Unitário']?.replace('R$', '').replace(',', '.')) || 0;
                     row['Valor Total'] = parseFloat(row['Valor Total']?.replace('R$', '').replace(',', '.')) || 0;
@@ -190,35 +183,28 @@
             });
 
             switch (state.activeTab) {
-                case 'estoque':
-                    renderInventoryView();
-                    break;
-                case 'minimo':
-                    renderMinStockView();
-                    break;
-                case 'validade':
-                    renderExpirationView();
-                    break;
-                case 'relatorios':
-                    renderReportsView();
-                    break;
+                case 'estoque': renderInventoryView(); break;
+                case 'minimo': renderMinStockView(); break;
+                case 'validade': renderExpirationView(); break;
+                case 'relatorios': renderReportsView(); break;
+                case 'envios': renderEnviosView(); break;
             }
         };
 
         const createFiltersHTML = () => {
             return `
                 <div class="flex flex-col sm:flex-row gap-4 mb-4">
-                    <input type="text" id="search-input" placeholder="Buscar por produto ou código..." class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    <input type="text" id="search-input" placeholder="Buscar por produto ou código..." class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" value="${state.filters.searchTerm}">
                     <select id="category-select" class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="all">Todas as Categorias</option>
-                        ${state.categories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
+                        ${state.categories.map(cat => `<option value="${cat}" ${state.filters.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
                     </select>
                 </div>
             `;
         };
         
         const createTableHTML = (data, columns) => {
-            if (data.length === 0) {
+             if (data.length === 0) {
                 return '<p class="text-center text-slate-500 py-8">Nenhum item encontrado.</p>';
             }
             return `
@@ -241,6 +227,24 @@
             `;
         };
 
+        const createPaginationHTML = (totalPages, currentPage) => {
+            if (totalPages <= 1) return '';
+
+            let html = '<div class="flex justify-center items-center gap-2 mt-6 flex-wrap">';
+            
+            html += `<button data-page="${currentPage - 1}" class="pagination-btn px-3 py-1 rounded-md bg-white border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage === 1 ? 'disabled' : ''}>Anterior</button>`;
+
+            for (let i = 1; i <= totalPages; i++) {
+                const isActive = i === currentPage;
+                html += `<button data-page="${i}" class="pagination-btn px-3 py-1 rounded-md border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'}">${i}</button>`;
+            }
+            
+            html += `<button data-page="${currentPage + 1}" class="pagination-btn px-3 py-1 rounded-md bg-white border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage === totalPages ? 'disabled' : ''}>Próximo</button>`;
+
+            html += '</div>';
+            return html;
+        };
+
         const getFilteredData = () => {
             return state.inventoryData.filter(item => {
                 const searchTerm = state.filters.searchTerm.toLowerCase();
@@ -254,10 +258,12 @@
         const addFilterEventListeners = () => {
             document.getElementById('search-input')?.addEventListener('input', (e) => {
                 state.filters.searchTerm = e.target.value;
+                state.pagination.inventoryPage = 1; // Reset page on filter
                 render();
             });
             document.getElementById('category-select')?.addEventListener('change', (e) => {
                 state.filters.category = e.target.value;
+                state.pagination.inventoryPage = 1; // Reset page on filter
                 render();
             });
         };
@@ -265,7 +271,14 @@
         // RENDERIZAÇÃO DAS ABAS
         const renderInventoryView = () => {
             const view = document.getElementById('estoque-view');
-            const data = getFilteredData();
+            const filteredData = getFilteredData();
+            
+            const { inventoryPage, itemsPerPage } = state.pagination;
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            const startIndex = (inventoryPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const paginatedData = filteredData.slice(startIndex, endIndex);
+
             const columns = [
                 { header: 'Código', render: item => item['Código'] || 'N/A' },
                 { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold text-slate-800' },
@@ -276,8 +289,19 @@
                 { header: 'Valor Total', render: item => formatCurrency(item['Valor Total']) },
                 { header: 'Data de Validade', render: item => item['Data de Validade'] || 'N/A' }
             ];
-            view.innerHTML = createFiltersHTML() + createTableHTML(data, columns);
+            
+            view.innerHTML = createFiltersHTML() + createTableHTML(paginatedData, columns) + createPaginationHTML(totalPages, inventoryPage);
             addFilterEventListeners();
+            
+            document.querySelectorAll('.pagination-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const page = parseInt(e.currentTarget.dataset.page);
+                    if (page) {
+                        state.pagination.inventoryPage = page;
+                        render();
+                    }
+                });
+            });
         };
         
         const renderMinStockView = () => {
@@ -408,6 +432,72 @@
                 </div>
             `;
         };
+        
+        const renderEnviosView = () => {
+            const view = document.getElementById('envios-view');
+
+            const unitData = state.sentItemsData.reduce((acc, item) => {
+                const unit = item['Unidade'] || 'Unidade não especificada';
+                const product = item['Produto'] || 'Produto não especificado';
+                const quantity = item['Quantidade'] || 0;
+                if(!unit || !product || !quantity) return acc;
+
+                if (!acc[unit]) acc[unit] = {};
+                if (!acc[unit][product]) acc[unit][product] = 0;
+                
+                acc[unit][product] += quantity;
+                return acc;
+            }, {});
+
+            const searchTerm = state.filters.unitSearchTerm.toLowerCase();
+            const filteredUnits = Object.keys(unitData).filter(unitName => unitName.toLowerCase().includes(searchTerm));
+
+            let html = `
+                <div class="mb-4">
+                    <input type="text" id="unit-search-input" value="${state.filters.unitSearchTerm}" placeholder="Buscar por unidade..." class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            `;
+
+            if (filteredUnits.length === 0) {
+                html += '<p class="text-center text-slate-500 py-8 col-span-full">Nenhuma unidade encontrada.</p>';
+            } else {
+                filteredUnits.sort().forEach(unit => {
+                    const products = unitData[unit];
+                    html += `
+                        <div class="bg-slate-50 rounded-lg shadow p-4 flex flex-col">
+                            <h3 class="font-bold text-lg text-indigo-700 mb-3">${unit}</h3>
+                            <div class="flex-grow max-h-60 overflow-y-auto pr-2">
+                                <table class="w-full text-sm">
+                                    <thead class="text-slate-600">
+                                        <tr>
+                                            <th class="text-left font-semibold pb-2">Produto</th>
+                                            <th class="text-right font-semibold pb-2">Qtd. Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${Object.entries(products).sort(([,a],[,b]) => b-a).map(([product, quantity]) => `
+                                            <tr class="border-t border-slate-200">
+                                                <td class="py-2">${product}</td>
+                                                <td class="py-2 text-right font-semibold">${quantity}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            html += '</div>';
+            view.innerHTML = html;
+            
+            document.getElementById('unit-search-input')?.addEventListener('input', (e) => {
+                state.filters.unitSearchTerm = e.target.value;
+                render();
+            });
+        };
 
         // --- INICIALIZAÇÃO E EVENTOS ---
         const init = async () => {
@@ -441,22 +531,12 @@
                 let envioCsv = '';
                 const envioResult = results[1];
                 if (envioResult) {
-                    if (envioResult.status === 'rejected') {
+                     if (envioResult.status === 'rejected') {
                         console.warn('Falha ao carregar dados de "Envio":', envioResult.reason.message);
                         const warningDiv = document.createElement('div');
                         warningDiv.className = 'p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-100';
                         warningDiv.setAttribute('role', 'alert');
-                        warningDiv.innerHTML = `
-                            <h3 class="font-bold text-lg mb-2">AÇÃO NECESSÁRIA: Falha ao carregar a aba "Envio"</h3>
-                            <p>O painel não consegue se conectar à sua aba "Envio" porque o GID (número de identificação) no código está incorreto. Por isso, o cálculo de saídas do estoque não está funcionando.</p>
-                            <p class="mt-2"><strong>COMO CORRIGIR:</strong></p>
-                            <ol class="list-decimal list-inside mt-1 space-y-1">
-                                <li>Abra o arquivo <strong>index.html</strong> que você está usando.</li>
-                                <li>Procure pela variável chamada <strong>ENVIO_GID</strong> (há um grande comentário de aviso acima dela).</li>
-                                <li>Substitua o número de exemplo (<strong>'${ENVIO_GID}'</strong>) pelo GID correto da sua planilha.</li>
-                            </ol>
-                            <p class="mt-2">Você encontra o GID correto no final do link ao clicar na sua aba "Envio" na planilha.</p>
-                        `;
+                        warningDiv.innerHTML = `<h3 class="font-bold">Aviso:</h3> <p>Não foi possível carregar os dados da aba "Envio". Os cálculos de estoque podem estar incorretos. Verifique se o GID da aba "Envio" está correto.</p>`;
                         dom.contentArea.prepend(warningDiv);
                     } else {
                         envioCsv = envioResult.value;
@@ -465,6 +545,7 @@
 
                 const initialStock = parseCSV(estoqueCsv);
                 const sentItems = envioCsv ? parseCSV(envioCsv) : [];
+                state.sentItemsData = sentItems; // Store raw data for the new tab
 
                 const sentItemsMap = sentItems.reduce((map, item) => {
                     const key = item['Código'];
@@ -495,7 +576,7 @@
             } catch (error) {
                 console.error(error);
                 dom.loader.style.display = 'none';
-                dom.errorMessage.textContent = error.message; 
+                dom.errorMessage.textContent = `Erro crítico: ${error.message}`;
                 dom.errorMessage.style.display = 'block';
             }
         };
@@ -511,5 +592,4 @@
     </script>
 </body>
 </html>
-
 
