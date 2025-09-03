@@ -44,41 +44,41 @@
 
     <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         
-        <!-- Cabeçalho -->
+        <!-- Cabeçalho Otimizado -->
         <header class="mb-6">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+            <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div class="flex items-center">
-                    <img src="https://www.saoluis.ma.gov.br/img/logo_mobile.png?1738946184" alt="Logotipo da Prefeitura de São Luís" class="h-16 w-auto mr-4">
+                    <img src="https://www.saoluis.ma.gov.br/img/logo_mobile.png?1738946184" alt="Logotipo da Prefeitura de São Luís" class="h-14 sm:h-16 w-auto mr-4">
                     <div>
-                        <h1 class="text-3xl font-bold text-sky-700">Semcas - Almoxarifado e Manutenção</h1>
+                        <h1 class="text-2xl sm:text-3xl font-bold text-sky-700">Semcas - Almoxarifado e Manutenção</h1>
                         <p class="mt-1 text-slate-500">Painel de Controle de Estoque em Tempo Real</p>
                     </div>
                 </div>
-                <div id="last-updated" class="text-sm text-slate-500 mt-2 sm:mt-0"></div>
+                <div id="last-updated" class="text-sm text-slate-500 self-center sm:self-auto"></div>
             </div>
         </header>
 
-        <!-- Navegação por Abas -->
-        <nav class="flex flex-wrap border-b border-slate-300">
+        <!-- Navegação por Abas Otimizada -->
+        <nav class="flex flex-wrap border-b border-slate-300 justify-center sm:justify-start">
             <button data-tab="estoque" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M5 8a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" /><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 11-2 0V4H6v12a1 1 0 11-2 0V4zm5 3a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>
-                Estoque Geral
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle" viewBox="0 0 20 20" fill="currentColor"><path d="M5 8a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" /><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 11-2 0V4H6v12a1 1 0 11-2 0V4zm5 3a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>
+                <span class="align-middle">Estoque Geral</span>
             </button>
             <button data-tab="minimo" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3.001-1.742 3.001H4.42c-1.53 0-2.493-1.667-1.743-3.001l5.58-9.92zM10 13a1 1 0 110-2 1 1 0 010 2zm-1.75-5.25a1.75 1.75 0 00-3.5 0v.25a1.75 1.75 0 003.5 0v-.25z" clip-rule="evenodd" /></svg>
-                Estoque Mínimo
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3.001-1.742 3.001H4.42c-1.53 0-2.493-1.667-1.743-3.001l5.58-9.92zM10 13a1 1 0 110-2 1 1 0 010 2zm-1.75-5.25a1.75 1.75 0 00-3.5 0v.25a1.75 1.75 0 003.5 0v-.25z" clip-rule="evenodd" /></svg>
+                <span class="align-middle">Estoque Mínimo</span>
             </button>
             <button data-tab="validade" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg>
-                Controle de Validade
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg>
+                <span class="align-middle">Controle de Validade</span>
             </button>
             <button data-tab="relatorios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 110 2H3a1 1 0 01-1-1zm5 0a1 1 0 011-1h5a1 1 0 110 2H8a1 1 0 01-1-1zm5 0a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" /></svg>
-                Relatórios
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 110 2H3a1 1 0 01-1-1zm5 0a1 1 0 011-1h5a1 1 0 110 2H8a1 1 0 01-1-1zm5 0a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" /></svg>
+                <span class="align-middle">Relatórios</span>
             </button>
             <button data-tab="envios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" /><path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM6 16a1 1 0 11-2 0 1 1 0 012 0z" /><path d="M11 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1h-1v1a1 1 0 01-1 1h-2a1 1 0 01-1-1v-1H12a1 1 0 01-1-1V5z" /></svg>
-                Envios por Unidade
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle" viewBox="0 0 20 20" fill="currentColor"><path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" /><path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM6 16a1 1 0 11-2 0 1 1 0 012 0z" /><path d="M11 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1h-1v1a1 1 0 01-1 1h-2a1 1 0 01-1-1v-1H12a1 1 0 01-1-1V5z" /></svg>
+                <span class="align-middle">Envios por Unidade</span>
             </button>
         </nav>
 
