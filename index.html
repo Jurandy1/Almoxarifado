@@ -3,827 +3,513 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Semcas - Controle de Almoxarifado</title>
+    <title>Semcas - Almoxarifado e Manutenção</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --primary-color: #0d47a1; /* Azul escuro */
-            --secondary-color: #1565c0; /* Azul médio */
-            --accent-color: #1e88e5; /* Azul claro */
-            --background-color: #f4f7f9;
-            --text-color: #333;
-        }
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
         }
-        .sidebar { background-color: var(--primary-color); }
-        .sidebar a { transition: background-color 0.3s, color 0.3s; }
-        .sidebar a:hover, .sidebar a.active { background-color: var(--secondary-color); }
-        .btn-primary { background-color: var(--primary-color); color: white; transition: background-color 0.3s; }
-        .btn-primary:hover { background-color: var(--secondary-color); }
-        .btn-primary:disabled { background-color: #90a4ae; cursor: not-allowed; }
-        .card { background-color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); transition: transform 0.2s; }
-        .card:hover { transform: translateY(-5px); }
-        .modal-backdrop { background-color: rgba(0,0,0,0.5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-        .content-section { display: none; }
-        .content-section.active { display: block; }
-        table thead { background-color: var(--secondary-color); color: white; }
-        table tbody tr:nth-child(even) { background-color: #f8f9fa; }
-        table tbody tr:hover { background-color: #e9ecef; }
-        #loading-overlay { z-index: 100; }
+        .tab-active {
+            border-color: #4f46e5;
+            color: #4f46e5;
+            background-color: #eef2ff;
+        }
+        .view {
+            display: none;
+        }
+        .view-active {
+            display: block;
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
     </style>
 </head>
-<body class="flex h-screen">
+<body class="bg-slate-100 text-slate-800">
 
-    <!-- AVISO DE SERVIDOR LOCAL -->
-    <div id="server-warning" class="fixed inset-x-0 top-0 z-[200] bg-red-600 text-white text-center p-2 hidden">
-        <strong>Atenção:</strong> Este aplicativo precisa ser executado em um servidor web. Abrir o arquivo diretamente não funcionará. Veja a aba "Ajuda".
-    </div>
+    <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- Cabeçalho -->
+        <header class="mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                <div>
+                    <h1 class="text-3xl font-bold text-indigo-700">Semcas - Almoxarifado e Manutenção</h1>
+                    <p class="mt-1 text-slate-500">Painel de Controle de Estoque em Tempo Real</p>
+                </div>
+                <div id="last-updated" class="text-sm text-slate-500 mt-2 sm:mt-0"></div>
+            </div>
+        </header>
 
-    <!-- Overlay de Carregamento -->
-    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-75 flex-col items-center justify-center hidden">
-        <svg class="animate-spin h-10 w-10 text-blue-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <p id="loading-message" class="mt-4 text-lg text-blue-800 font-semibold">Sincronizando com Google Sheets...</p>
-    </div>
-
-    <!-- Sidebar de Navegação -->
-    <aside class="sidebar w-64 text-white flex-shrink-0 p-4 flex flex-col">
-        <div class="text-center mb-10">
-            <h1 class="text-2xl font-bold">Semcas</h1>
-            <p class="text-sm">Almoxarifado e Manutenção</p>
-        </div>
-        <nav class="flex-grow">
-            <a href="#" onclick="showSection('dashboard')" class="nav-link active flex items-center p-3 rounded-lg mb-2">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-3"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                Dashboard
-            </a>
-            <a href="#" onclick="showSection('estoque')" class="nav-link flex items-center p-3 rounded-lg mb-2">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-3"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-                Estoque
-            </a>
-            <a href="#" onclick="showSection('unidades')" class="nav-link flex items-center p-3 rounded-lg mb-2">
-                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-3"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                Unidades
-            </a>
-            <a href="#" onclick="showSection('relatorios')" class="nav-link flex items-center p-3 rounded-lg mb-2">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-3"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+        <!-- Navegação por Abas -->
+        <nav class="flex flex-wrap border-b border-slate-300">
+            <button data-tab="estoque" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M5 8a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" /><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 11-2 0V4H6v12a1 1 0 11-2 0V4zm5 3a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>
+                Estoque Geral
+            </button>
+            <button data-tab="minimo" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3.001-1.742 3.001H4.42c-1.53 0-2.493-1.667-1.743-3.001l5.58-9.92zM10 13a1 1 0 110-2 1 1 0 010 2zm-1.75-5.25a1.75 1.75 0 00-3.5 0v.25a1.75 1.75 0 003.5 0v-.25z" clip-rule="evenodd" /></svg>
+                Estoque Mínimo
+            </button>
+            <button data-tab="validade" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg>
+                Controle de Validade
+            </button>
+            <button data-tab="relatorios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 110 2H3a1 1 0 01-1-1zm5 0a1 1 0 011-1h5a1 1 0 110 2H8a1 1 0 01-1-1zm5 0a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" /></svg>
                 Relatórios
-            </a>
-            <a href="#" onclick="showSection('ajuda')" class="nav-link flex items-center p-3 rounded-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 mr-3"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
-                Ajuda
-            </a>
+            </button>
         </nav>
-        <div class="mt-auto">
-            <button id="auth-button" onclick="handleAuthClick()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Login com Google</button>
-            <button id="signout-button" onclick="handleSignoutClick()" class="w-full hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg mt-2">Sair</button>
-            <button onclick="openConfigModal()" class="w-full text-xs text-gray-300 hover:text-white mt-4">Configurações</button>
-        </div>
-    </aside>
 
-    <!-- Conteúdo Principal -->
-    <main id="main-content" class="flex-1 p-8 overflow-y-auto" style="filter: blur(5px); pointer-events: none;">
-        <!-- Todas as seções aqui -->
-        <!-- Seção Dashboard -->
-        <section id="dashboard-section" class="content-section active">
-            <h2 class="text-3xl font-bold mb-6">Dashboard</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div class="card p-5">
-                    <h3 class="text-gray-500 text-sm font-medium">Valor Total em Estoque</h3>
-                    <p id="dashboard-total-value" class="text-3xl font-bold">R$ 0,00</p>
-                </div>
-                <div class="card p-5">
-                    <h3 class="text-gray-500 text-sm font-medium">Itens Totais</h3>
-                    <p id="dashboard-total-items" class="text-3xl font-bold">0</p>
-                </div>
-                <div class="card p-5">
-                    <h3 class="text-gray-500 text-sm font-medium">Categorias</h3>
-                    <p id="dashboard-total-categories" class="text-3xl font-bold">0</p>
-                </div>
-                 <div class="card p-5 bg-yellow-100 border border-yellow-400">
-                    <h3 class="text-yellow-800 text-sm font-medium">Itens com Estoque Baixo</h3>
-                    <p id="dashboard-low-stock" class="text-3xl font-bold text-yellow-800">0</p>
-                </div>
+        <main id="content-area" class="bg-white rounded-b-lg shadow-lg p-6 min-h-[60vh]">
+            
+            <!-- Loader -->
+            <div id="loader" class="flex justify-center items-center h-64">
+                <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
             </div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div class="card p-5">
-                    <h3 class="font-bold text-lg mb-4">Itens por Categoria</h3>
-                    <canvas id="categoryChart"></canvas>
-                </div>
-                <div class="card p-5">
-                    <h3 class="font-bold text-lg mb-4">Valor por Categoria</h3>
-                    <canvas id="valueChart"></canvas>
-                </div>
-            </div>
-        </section>
 
-        <!-- Seção de Estoque -->
-        <section id="estoque-section" class="content-section">
-            <h2 class="text-3xl font-bold mb-6">Controle de Estoque</h2>
-            <div class="flex justify-between items-center mb-4">
-                <div class="w-1/3">
-                    <input type="text" id="searchInput" placeholder="Buscar produto..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <button onclick="exportToCSV()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg mr-2">Exportar para CSV</button>
-                    <button onclick="openProductModal(null)" class="btn-primary font-bold py-2 px-4 rounded-lg">Adicionar Produto</button>
-                </div>
-            </div>
-            <div class="bg-white rounded-lg shadow overflow-x-auto">
-                <table class="w-full text-sm text-left">
-                    <thead class="text-xs uppercase">
-                        <tr>
-                            <th scope="col" class="px-6 py-3">Código</th>
-                            <th scope="col" class="px-6 py-3">Produto</th>
-                            <th scope="col" class="px-6 py-3">Categoria</th>
-                            <th scope="col" class="px-6 py-3">Qtd.</th>
-                            <th scope="col" class="px-6 py-3">Est. Mínimo</th>
-                            <th scope="col" class="px-6 py-3">Valor Unit.</th>
-                            <th scope="col" class="px-6 py-3">Valor Total</th>
-                            <th scope="col" class="px-6 py-3">Data Entrada</th>
-                            <th scope="col" class="px-6 py-3">Validade</th>
-                            <th scope="col" class="px-6 py-3 text-center">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="products-table">
-                        <!-- Linhas da tabela serão inseridas aqui via JS -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
+            <!-- Mensagem de Erro (para erros críticos) -->
+            <div id="error-message" class="hidden text-center text-red-600 bg-red-100 p-4 rounded-lg"></div>
+
+            <!-- Conteúdo das Abas -->
+            <div id="estoque-view" class="view"></div>
+            <div id="minimo-view" class="view"></div>
+            <div id="validade-view" class="view"></div>
+            <div id="relatorios-view" class="view"></div>
+        </main>
+    </div>
+
+    <script type="module">
+        // --- CONFIGURAÇÕES ---
+        const SPREADSHEET_ID = '2PACX-1vSq5-5mNONPvPSFwcvqXl3u5ClieB-tTk6WDCe0Rtzk87zgFMb6YaaMe2s3m0eTYXKa1mp_Gyo8w7er';
+        const ESTOQUE_GID = '0'; // GID da aba "Estoque", geralmente 0 para a primeira
         
-        <!-- Seção de Unidades -->
-        <section id="unidades-section" class="content-section">
-             <h2 class="text-3xl font-bold mb-6">Gestão de Unidades</h2>
-             <div class="card p-5 mb-6">
-                <h3 class="font-bold text-lg mb-4">Adicionar Nova Unidade</h3>
-                <div class="flex gap-4">
-                    <input type="text" id="unitNameInput" placeholder="Nome da Unidade" class="flex-grow px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <button onclick="addUnit()" class="btn-primary font-bold py-2 px-4 rounded-lg">Adicionar</button>
-                </div>
-            </div>
-            <div id="units-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Cards das unidades serão inseridos aqui -->
-            </div>
-        </section>
-
-        <!-- Seção de Relatórios -->
-        <section id="relatorios-section" class="content-section">
-            <h2 class="text-3xl font-bold mb-6">Relatórios de Movimentação</h2>
-             <div class="card p-5 mb-6">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                     <div>
-                        <label for="report-start-date" class="block text-sm font-medium text-gray-700">Data Início</label>
-                        <input type="date" id="report-start-date" class="mt-1 block w-full py-2 px-3 border rounded-md">
-                    </div>
-                    <div>
-                        <label for="report-end-date" class="block text-sm font-medium text-gray-700">Data Fim</label>
-                        <input type="date" id="report-end-date" class="mt-1 block w-full py-2 px-3 border rounded-md">
-                    </div>
-                    <button onclick="generateReport()" class="btn-primary font-bold py-2 px-4 rounded-lg h-10 col-start-4">Gerar Relatório</button>
-                </div>
-            </div>
-            <div id="report-output" class="card p-5">
-                <p class="text-gray-500">Selecione os filtros e gere um relatório para ver os resultados.</p>
-            </div>
-        </section>
+        // !!! ======================================================================= !!!
+        // !!!                     ATENÇÃO: AÇÃO OBRIGATÓRIA AQUI                      !!!
+        // !!! ======================================================================= !!!
+        // !!! O painel NÃO FUNCIONARÁ CORRETAMENTE até que você atualize o GID abaixo.!!!
+        // !!! O GID é o número de identificação da sua aba "Envio".                    !!!
+        // !!!                                                                         !!!
+        // !!!    COMO ENCONTRAR E CORRIGIR:                                           !!!
+        // 1. Abra sua planilha no Google Sheets.                                     !!!
+        // 2. Clique na aba/página chamada "Envio".                                   !!!
+        // 3. Olhe o link (URL) no seu navegador. Será algo como:                     !!!
+        //    https://docs.google.com/spreadsheets/d/..../edit#gid=123456789          !!!
+        // 4. Copie APENAS O NÚMERO do final (neste exemplo, 123456789).              !!!
+        // 5. Cole o número abaixo, substituindo o '1451380922' de exemplo.          !!!
+        // !!! ======================================================================= !!!
+        const ENVIO_GID = '812966811'; // <<< SUBSTITUA O NÚMERO AQUI, DENTRO DAS ASPAS!
         
-        <!-- Seção de Ajuda -->
-        <section id="ajuda-section" class="content-section">
-            <h2 class="text-3xl font-bold mb-6">Ajuda</h2>
-            <div class="card p-8 space-y-4">
-                <div class="prose max-w-none">
-                    <h3>Como usar o sistema?</h3>
-                    <p>Este sistema agora está integrado ao Google Sheets. Siga o guia de configuração para conectar sua planilha.</p>
-                    <ul>
-                        <li><strong>Login:</strong> Use o botão "Login com Google" para carregar os dados da sua planilha.</li>
-                        <li><strong>Sincronização:</strong> Qualquer alteração (adicionar, editar, excluir) é salva automaticamente na sua planilha.</li>
-                        <li><strong>Backup:</strong> Seus dados agora estão seguros no Google Drive. A função "Exportar para CSV" ainda está disponível para relatórios offline.</li>
-                    </ul>
-                    <h3 class="mt-6">Erro de Login ou "Script Error"?</h3>
-                    <p>A autenticação do Google requer que o site seja acessado através de um servidor web (usando um endereço <code>http://</code>), e não abrindo o arquivo HTML diretamente do seu computador (endereço <code>file:///</code>).</p>
-                    <p>Se você estiver vendo erros ao tentar fazer login, siga estes passos para iniciar um servidor local simples:</p>
-                    <ol>
-                        <li>Certifique-se de ter o Python instalado em seu computador.</li>
-                        <li>Abra um terminal ou prompt de comando.</li>
-                        <li>Navegue até a pasta onde você salvou o arquivo <code>index.html</code>.</li>
-                        <li>Execute o comando: <code>python -m http.server 8000</code></li>
-                        <li>Abra seu navegador e acesse o endereço: <a href="http://localhost:8000" target="_blank">http://localhost:8000</a></li>
-                    </ol>
-                    <p>Lembre-se de adicionar `http://localhost:8000` e `http://127.0.0.1:8000` nas "Origens JavaScript autorizadas" no seu projeto do Google Cloud, como indicado no guia de configuração.</p>
-                </div>
-            </div>
-        </section>
+        const MIN_STOCK_THRESHOLD = 10;
+        const EXPIRATION_THRESHOLD_DAYS = 30;
 
-    </main>
-    
-    <!-- Modais -->
-    <!-- Modal de Configuração -->
-    <div id="config-modal" class="fixed inset-0 z-50 items-center justify-center hidden modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-8">
-            <h3 class="text-2xl font-bold mb-6">Configuração do Google Sheets</h3>
-            <p class="text-sm text-gray-600 mb-4">
-                Preencha estas informações para conectar o sistema à sua planilha. Siga o guia de instruções para obter estes dados.
-            </p>
-            <form id="config-form" onsubmit="saveConfig(event)" class="space-y-4">
-                <div>
-                    <label for="api-key" class="block text-sm font-medium text-gray-700">Chave de API (API Key)</label>
-                    <input id="api-key" type="text" required class="w-full p-2 border rounded mt-1">
-                </div>
-                <div>
-                    <label for="client-id" class="block text-sm font-medium text-gray-700">ID do Cliente (Client ID)</label>
-                    <input id="client-id" type="text" required class="w-full p-2 border rounded mt-1">
-                </div>
-                <div>
-                    <label for="spreadsheet-id" class="block text-sm font-medium text-gray-700">ID da Planilha (Spreadsheet ID)</label>
-                    <input id="spreadsheet-id" type="text" required class="w-full p-2 border rounded mt-1">
-                </div>
-                <div class="flex justify-end pt-4">
-                    <button type="button" onclick="closeModal('config-modal')" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg mr-2">Cancelar</button>
-                    <button type="submit" class="btn-primary font-bold py-2 px-4 rounded-lg">Salvar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <!-- Outros modais (Produto e Baixa) -->
-    <!-- Modal Adicionar/Editar Produto -->
-    <div id="product-modal" class="fixed inset-0 z-50 items-center justify-center hidden modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-8" onclick="event.stopPropagation()">
-            <h3 id="modal-title" class="text-2xl font-bold mb-6">Adicionar Novo Produto</h3>
-            <form id="product-form" onsubmit="saveProduct(event)">
-                <input type="hidden" id="product-id">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input id="fundo" type="text" placeholder="Fundo" class="p-2 border rounded">
-                    <input id="codigo" type="text" placeholder="Código" required class="p-2 border rounded">
-                    <input id="produto" type="text" placeholder="Produto" required class="col-span-1 md:col-span-2 p-2 border rounded">
-                    <select id="categoria" required class="p-2 border rounded">
-                        <option value="">Selecione a Categoria</option>
-                        <option>Materiais de Reforma e Manutenção</option>
-                        <option>LIMPEZA</option>
-                        <option>EXPEDIENTE</option>
-                        <option>Higiene</option>
-                        <option>Alimentos Perecíveis</option>
-                        <option>MATERIAL GRÁFICO</option>
-                        <option>Alimentos Não Perecíveis</option>
-                        <option>INFORMATICA</option>
-                    </select>
-                    <input id="quantidade" type="number" placeholder="Quantidade" required class="p-2 border rounded">
-                    <input id="unidade" type="text" placeholder="Unidade (Ex: CX, UN, KG)" required class="p-2 border rounded">
-                    <input id="valor-unitario" type="number" step="0.01" placeholder="Valor Unitário" required class="p-2 border rounded">
-                    <input id="estoque-minimo" type="number" placeholder="Estoque Mínimo" required class="p-2 border rounded">
-                    <div>
-                        <label for="data-entrada" class="text-sm">Data de Entrada</label>
-                        <input id="data-entrada" type="date" required class="w-full p-2 border rounded">
-                    </div>
-                     <div>
-                        <label for="data-validade" class="text-sm">Data de Validade</label>
-                        <input id="data-validade" type="date" class="w-full p-2 border rounded">
-                    </div>
-                </div>
-                <div class="flex justify-end mt-6">
-                    <button type="button" onclick="closeModal('product-modal')" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg mr-2">Cancelar</button>
-                    <button type="submit" class="btn-primary font-bold py-2 px-4 rounded-lg">Salvar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <!-- Modal Baixar Estoque -->
-    <div id="dispatch-modal" class="fixed inset-0 z-50 items-center justify-center hidden modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-8" onclick="event.stopPropagation()">
-            <h3 class="text-2xl font-bold mb-6">Baixar Item do Estoque</h3>
-            <p class="mb-4">Produto: <span id="dispatch-product-name" class="font-bold"></span></p>
-            <form id="dispatch-form" onsubmit="handleDispatch(event)">
-                <input type="hidden" id="dispatch-product-id">
-                <div class="space-y-4">
-                    <div>
-                        <label for="dispatch-unit" class="block">Unidade de Destino</label>
-                        <select id="dispatch-unit" required class="w-full p-2 border rounded">
-                            <!-- Opções de unidades carregadas via JS -->
-                        </select>
-                    </div>
-                    <div>
-                        <label for="dispatch-quantity" class="block">Quantidade a ser baixada</label>
-                        <input id="dispatch-quantity" type="number" placeholder="Quantidade" required class="w-full p-2 border rounded">
-                    </div>
-                </div>
-                <div class="flex justify-end mt-6">
-                    <button type="button" onclick="closeModal('dispatch-modal')" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg mr-2">Cancelar</button>
-                    <button type="submit" class="btn-primary font-bold py-2 px-4 rounded-lg">Confirmar Baixa</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-<script type="module">
-// --- CONFIGURAÇÃO E AUTENTICAÇÃO GOOGLE ---
-let API_KEY;
-let CLIENT_ID;
-let SPREADSHEET_ID;
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+        const ESTOQUE_URL = `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${ESTOQUE_GID}`;
+        const ENVIO_URL = ENVIO_GID ? `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${ENVIO_GID}` : '';
 
-let tokenClient;
-let gapiInited = false;
-let gisInited = false;
-
-document.addEventListener('DOMContentLoaded', () => {
-    if (window.location.protocol === 'file:') {
-        document.getElementById('server-warning').classList.remove('hidden');
-        const authButton = document.getElementById('auth-button');
-        authButton.disabled = true;
-        authButton.textContent = 'Requer Servidor Local';
-        showSection('ajuda'); // Mostra a ajuda para guiar o usuário
-        return; // Para a execução para evitar mais erros
-    }
-
-    loadConfig();
-    if (!API_KEY || !CLIENT_ID || !SPREADSHEET_ID) {
-        openConfigModal();
-    }
-});
-
-window.gapiLoaded = function() {
-    gapi.load('client', initializeGapiClient);
-};
-
-async function initializeGapiClient() {
-    await gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
-    });
-    gapiInited = true;
-    maybeEnableButtons();
-}
-
-window.gisLoaded = function() {
-    try {
-        if (!CLIENT_ID) {
-            console.error("Client ID está faltando. O cliente GIS não pode ser inicializado.");
-            return;
-        }
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: '', // Definido dinamicamente
-        });
-        gisInited = true;
-        maybeEnableButtons();
-    } catch (e) {
-        console.error("Erro ao inicializar o Google Sign-In:", e);
-        alert("Falha ao inicializar o Login do Google. Verifique se o ID do Cliente está correto nas configurações.");
-    }
-};
-
-function maybeEnableButtons() {
-    if (gapiInited && gisInited && API_KEY && CLIENT_ID) {
-        document.getElementById('auth-button').disabled = false;
-    }
-}
-
-window.handleAuthClick = function() {
-    tokenClient.callback = async (resp) => {
-        if (resp.error !== undefined) {
-            throw (resp);
-        }
-        document.getElementById('signout-button').classList.remove('hidden');
-        document.getElementById('auth-button').classList.add('hidden');
-        await loadSheetData();
-    };
-
-    if (gapi.client.getToken() === null) {
-        tokenClient.requestAccessToken({prompt: 'consent'});
-    } else {
-        tokenClient.requestAccessToken({prompt: ''});
-    }
-}
-
-window.handleSignoutClick = function() {
-    const token = gapi.client.getToken();
-    if (token !== null) {
-        google.accounts.oauth2.revoke(token.access_token);
-        gapi.client.setToken('');
-        document.getElementById('signout-button').classList.add('hidden');
-        document.getElementById('auth-button').classList.remove('hidden');
-        document.getElementById('main-content').style.filter = 'blur(5px)';
-        document.getElementById('main-content').style.pointerEvents = 'none';
-        // Limpar dados locais ao sair
-        products = []; units = []; dispatches = [];
-        showSection('dashboard');
-    }
-}
-
-// --- LÓGICA DA APLICAÇÃO ---
-let products = [];
-let units = [];
-let dispatches = [];
-
-// Funções de navegação e UI
-window.showSection = function(sectionId) {
-    document.querySelectorAll('.content-section').forEach(section => section.classList.remove('active'));
-    document.getElementById(sectionId + '-section').classList.add('active');
-    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-    document.querySelector(`.nav-link[onclick="showSection('${sectionId}')"]`).classList.add('active');
-
-    if (sectionId === 'dashboard') updateDashboard();
-    if (sectionId === 'estoque') renderProductsTable();
-    if (sectionId === 'unidades') renderUnits();
-}
-
-const searchInput = document.getElementById('searchInput');
-searchInput.addEventListener('input', () => renderProductsTable(searchInput.value));
-
-function showLoading(message = "Sincronizando...") {
-    document.getElementById('loading-message').innerText = message;
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    document.getElementById('loading-overlay').classList.add('flex');
-}
-
-function hideLoading() {
-    document.getElementById('loading-overlay').classList.add('hidden');
-    document.getElementById('loading-overlay').classList.remove('flex');
-}
-
-// --- SINCRONIZAÇÃO COM GOOGLE SHEETS ---
-const HEADERS = {
-    Products: ['id', 'fundo', 'codigo', 'produto', 'categoria', 'quantidade', 'unidade', 'valorUnitario', 'estoqueMinimo', 'dataEntrada', 'dataValidade'],
-    Units: ['id', 'name'],
-    Dispatches: ['id', 'productId', 'unitId', 'quantity', 'date']
-};
-
-function sheetValuesToObjects(values, sheetName) {
-    const headers = HEADERS[sheetName];
-    if (!values || values.length < 1) return [];
-    return values.slice(1).map(row => {
-        const obj = {};
-        headers.forEach((header, i) => {
-            let value = row[i];
-            if (['id', 'quantidade', 'estoqueMinimo', 'productId', 'unitId', 'quantity'].includes(header)) {
-                value = value ? parseInt(value, 10) : 0;
-            } else if (header === 'valorUnitario') {
-                value = value ? parseFloat(String(value).replace(',', '.')) : 0;
+        // --- ESTADO DA APLICAÇÃO ---
+        let state = {
+            activeTab: 'estoque',
+            inventoryData: [],
+            categories: [],
+            filters: {
+                searchTerm: '',
+                category: 'all'
             }
-            obj[header] = value;
-        });
-        return obj;
-    });
-}
+        };
 
-function objectsToSheetValues(data, sheetName) {
-    const headers = HEADERS[sheetName];
-    const values = [headers];
-    data.forEach(obj => {
-        const row = headers.map(header => obj[header] !== undefined ? obj[header] : '');
-        values.push(row);
-    });
-    return values;
-}
+        // --- ELEMENTOS DO DOM ---
+        const dom = {
+            app: document.getElementById('app'),
+            loader: document.getElementById('loader'),
+            errorMessage: document.getElementById('error-message'),
+            tabs: document.querySelectorAll('.tab'),
+            contentArea: document.getElementById('content-area'),
+            lastUpdated: document.getElementById('last-updated'),
+        };
 
-async function loadSheetData() {
-    showLoading("Carregando dados da planilha...");
-    try {
-        const ranges = ['Products!A:K', 'Units!A:B', 'Dispatches!A:E'];
-        const response = await gapi.client.sheets.spreadsheets.values.batchGet({
-            spreadsheetId: SPREADSHEET_ID,
-            ranges: ranges,
-        });
+        // --- FUNÇÕES AUXILIARES ---
+        const parseCSV = (csvText) => {
+            if (!csvText) return [];
+            const lines = csvText.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            const data = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim() === '') continue;
+                
+                const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+
+                if (values.length === headers.length) {
+                    let row = {};
+                    headers.forEach((header, index) => {
+                        row[header] = values[index].trim().replace(/^"|"$/g, '');
+                    });
+                    
+                    row['Quantidade'] = parseInt(row['Quantidade']) || 0;
+                    row['Valor Unitário'] = parseFloat(row['Valor Unitário']?.replace('R$', '').replace(',', '.')) || 0;
+                    row['Valor Total'] = parseFloat(row['Valor Total']?.replace('R$', '').replace(',', '.')) || 0;
+                    data.push(row);
+                } else {
+                     console.warn(`Pulando linha CSV mal formatada ${i + 1}:`, lines[i]);
+                }
+            }
+            return data;
+        };
+
+        const formatDate = (dateString) => {
+            if (!dateString || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) return 'N/A';
+            const [day, month, year] = dateString.split('/');
+            return new Date(`${year}-${month}-${day}`);
+        };
+
+        const formatCurrency = (value) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+        };
         
-        const valueRanges = response.result.valueRanges;
-        products = sheetValuesToObjects(valueRanges[0]?.values, 'Products');
-        units = sheetValuesToObjects(valueRanges[1]?.values, 'Units');
-        dispatches = sheetValuesToObjects(valueRanges[2]?.values, 'Dispatches');
+        // --- FUNÇÕES DE RENDERIZAÇÃO ---
+        const render = () => {
+            dom.tabs.forEach(tab => {
+                tab.classList.toggle('tab-active', tab.dataset.tab === state.activeTab);
+            });
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.toggle('view-active', view.id.startsWith(state.activeTab));
+            });
 
-        document.getElementById('main-content').style.filter = 'none';
-        document.getElementById('main-content').style.pointerEvents = 'auto';
-        showSection('dashboard');
+            switch (state.activeTab) {
+                case 'estoque':
+                    renderInventoryView();
+                    break;
+                case 'minimo':
+                    renderMinStockView();
+                    break;
+                case 'validade':
+                    renderExpirationView();
+                    break;
+                case 'relatorios':
+                    renderReportsView();
+                    break;
+            }
+        };
 
-    } catch (err) {
-        console.error("Erro ao carregar dados:", err);
-        alert("Falha ao carregar dados da planilha. Verifique as configurações e permissões.");
-    } finally {
-        hideLoading();
-    }
-}
-
-async function updateSheet(sheetName, data) {
-    showLoading(`Salvando em "${sheetName}"...`);
-    try {
-        const values = objectsToSheetValues(data, sheetName);
-        await gapi.client.sheets.spreadsheets.values.clear({
-            spreadsheetId: SPREADSHEET_ID,
-            range: `${sheetName}!A2:${String.fromCharCode(65 + values[0].length - 1)}`,
-        });
+        const createFiltersHTML = () => {
+            return `
+                <div class="flex flex-col sm:flex-row gap-4 mb-4">
+                    <input type="text" id="search-input" placeholder="Buscar por produto ou código..." class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    <select id="category-select" class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="all">Todas as Categorias</option>
+                        ${state.categories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        };
         
-        await gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: SPREADSHEET_ID,
-            range: `${sheetName}!A1`,
-            valueInputOption: 'USER_ENTERED',
-            resource: { values: values },
+        const createTableHTML = (data, columns) => {
+            if (data.length === 0) {
+                return '<p class="text-center text-slate-500 py-8">Nenhum item encontrado.</p>';
+            }
+            return `
+                <div class="overflow-x-auto rounded-lg border border-slate-200">
+                    <table class="w-full text-sm text-left text-slate-500">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-100">
+                            <tr>
+                                ${columns.map(col => `<th scope="col" class="px-6 py-3">${col.header}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.map(item => `
+                                <tr class="bg-white border-b hover:bg-slate-50 ${item.rowClass || ''}">
+                                    ${columns.map(col => `<td class="px-6 py-4 ${col.class || ''}">${col.render(item)}</td>`).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        };
+
+        const getFilteredData = () => {
+            return state.inventoryData.filter(item => {
+                const searchTerm = state.filters.searchTerm.toLowerCase();
+                const category = state.filters.category;
+                const matchesSearch = item['Produto']?.toLowerCase().includes(searchTerm) || item['Código']?.toLowerCase().includes(searchTerm);
+                const matchesCategory = category === 'all' || item['Categoria'] === category;
+                return matchesSearch && matchesCategory;
+            });
+        };
+
+        const addFilterEventListeners = () => {
+            document.getElementById('search-input')?.addEventListener('input', (e) => {
+                state.filters.searchTerm = e.target.value;
+                render();
+            });
+            document.getElementById('category-select')?.addEventListener('change', (e) => {
+                state.filters.category = e.target.value;
+                render();
+            });
+        };
+
+        // RENDERIZAÇÃO DAS ABAS
+        const renderInventoryView = () => {
+            const view = document.getElementById('estoque-view');
+            const data = getFilteredData();
+            const columns = [
+                { header: 'Código', render: item => item['Código'] || 'N/A' },
+                { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold text-slate-800' },
+                { header: 'Categoria', render: item => item['Categoria'] || 'N/A' },
+                { header: 'Quantidade', render: item => item['Quantidade'], class: 'text-center font-bold' },
+                { header: 'Unidade', render: item => item['Unidade'] || 'N/A' },
+                { header: 'Valor Unitário', render: item => formatCurrency(item['Valor Unitário']) },
+                { header: 'Valor Total', render: item => formatCurrency(item['Valor Total']) },
+                { header: 'Data de Validade', render: item => item['Data de Validade'] || 'N/A' }
+            ];
+            view.innerHTML = createFiltersHTML() + createTableHTML(data, columns);
+            addFilterEventListeners();
+        };
+        
+        const renderMinStockView = () => {
+            const view = document.getElementById('minimo-view');
+            const filtered = getFilteredData();
+            const data = filtered.filter(item => item['Quantidade'] <= MIN_STOCK_THRESHOLD);
+             const columns = [
+                { header: 'Código', render: item => item['Código'] || 'N/A' },
+                { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold text-slate-800' },
+                { header: 'Categoria', render: item => item['Categoria'] || 'N/A' },
+                { header: 'Quantidade', render: item => `<span class="bg-red-100 text-red-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded-full">${item['Quantidade']}</span>`, class: 'text-center font-bold' },
+                { header: 'Unidade', render: item => item['Unidade'] || 'N/A' },
+            ];
+            view.innerHTML = `
+                <div class="p-4 mb-4 text-sm text-yellow-800 rounded-lg bg-yellow-50" role="alert">
+                    <span class="font-medium">Atenção!</span> Itens com quantidade igual ou inferior a ${MIN_STOCK_THRESHOLD}.
+                </div>
+            ` + createFiltersHTML() + createTableHTML(data, columns);
+            addFilterEventListeners();
+        };
+
+        const renderExpirationView = () => {
+            const view = document.getElementById('validade-view');
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            
+            const filtered = getFilteredData();
+            const data = filtered
+                .map(item => {
+                    const expiryDate = formatDate(item['Data de Validade']);
+                    if (!expiryDate || isNaN(expiryDate)) return { ...item, daysToExpire: Infinity, status: 'ok' };
+
+                    const diffTime = expiryDate - today;
+                    const daysToExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    let status = 'ok';
+                    let rowClass = '';
+                    if (daysToExpire < 0) {
+                        status = 'Vencido';
+                        rowClass = 'bg-red-50 text-red-900';
+                    } else if (daysToExpire <= EXPIRATION_THRESHOLD_DAYS) {
+                        status = 'Vence em breve';
+                        rowClass = 'bg-yellow-50 text-yellow-900';
+                    }
+                    
+                    return { ...item, daysToExpire, status, rowClass };
+                })
+                .filter(item => item.status !== 'ok')
+                .sort((a, b) => a.daysToExpire - b.daysToExpire);
+
+            const columns = [
+                { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold' },
+                { header: 'Data de Validade', render: item => item['Data de Validade'] || 'N/A' },
+                { header: 'Status', render: item => {
+                    if(item.status === 'Vencido') return `<span class="bg-red-200 text-red-900 px-2 py-1 rounded-full text-xs font-bold">${item.status}</span>`;
+                    if(item.status === 'Vence em breve') return `<span class="bg-yellow-200 text-yellow-900 px-2 py-1 rounded-full text-xs font-bold">${item.status} (${item.daysToExpire} dias)</span>`;
+                    return '';
+                 }
+                },
+                { header: 'Quantidade', render: item => item['Quantidade'], class: 'text-center font-bold' },
+            ];
+
+            view.innerHTML = `
+                <div class="p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50" role="alert">
+                    Mostrando itens vencidos ou que irão vencer nos próximos <span class="font-medium">${EXPIRATION_THRESHOLD_DAYS} dias</span>.
+                </div>
+            ` + createFiltersHTML() + createTableHTML(data, columns);
+            addFilterEventListeners();
+        };
+        
+        const renderReportsView = () => {
+            const view = document.getElementById('relatorios-view');
+            const totalValue = state.inventoryData.reduce((sum, item) => sum + (item['Valor Total'] || 0), 0);
+            const totalItems = state.inventoryData.reduce((sum, item) => sum + item['Quantidade'], 0);
+            const lowStockItems = state.inventoryData.filter(item => item['Quantidade'] <= MIN_STOCK_THRESHOLD).length;
+            const expiringItems = state.inventoryData.filter(item => {
+                 const expiryDate = formatDate(item['Data de Validade']);
+                 if (!expiryDate || isNaN(expiryDate)) return false;
+                 const diffTime = expiryDate - new Date();
+                 const daysToExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                 return daysToExpire > 0 && daysToExpire <= EXPIRATION_THRESHOLD_DAYS;
+            }).length;
+
+            const itemsByCategory = state.inventoryData.reduce((acc, item) => {
+                const category = item['Categoria'] || 'Sem Categoria';
+                acc[category] = (acc[category] || 0) + item['Quantidade'];
+                return acc;
+            }, {});
+            const maxCategoryValue = Math.max(1, ...Object.values(itemsByCategory)); // Evita divisão por zero
+
+            view.innerHTML = `
+                <!-- Cards de KPI -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-slate-50 p-6 rounded-lg shadow">
+                        <h3 class="text-sm font-medium text-slate-500">Valor Total do Estoque</h3>
+                        <p class="mt-2 text-3xl font-bold text-indigo-600">${formatCurrency(totalValue)}</p>
+                    </div>
+                    <div class="bg-slate-50 p-6 rounded-lg shadow">
+                        <h3 class="text-sm font-medium text-slate-500">Total de Itens</h3>
+                        <p class="mt-2 text-3xl font-bold text-indigo-600">${totalItems.toLocaleString('pt-BR')}</p>
+                    </div>
+                    <div class="bg-slate-50 p-6 rounded-lg shadow">
+                        <h3 class="text-sm font-medium text-slate-500">Itens com Estoque Baixo</h3>
+                        <p class="mt-2 text-3xl font-bold text-yellow-600">${lowStockItems}</p>
+                    </div>
+                    <div class="bg-slate-50 p-6 rounded-lg shadow">
+                        <h3 class="text-sm font-medium text-slate-500">Itens Vencendo em Breve</h3>
+                        <p class="mt-2 text-3xl font-bold text-orange-600">${expiringItems}</p>
+                    </div>
+                </div>
+
+                <!-- Gráfico de Categorias -->
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-4">Quantidade de Itens por Categoria</h3>
+                    <div class="space-y-4">
+                        ${Object.entries(itemsByCategory).sort(([,a],[,b]) => b-a).map(([category, count]) => `
+                            <div class="w-full">
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm font-medium text-slate-700">${category}</span>
+                                    <span class="text-sm font-medium text-slate-500">${count} itens</span>
+                                </div>
+                                <div class="w-full bg-slate-200 rounded-full h-4">
+                                    <div class="bg-indigo-500 h-4 rounded-full" style="width: ${(count / maxCategoryValue) * 100}%"></div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        };
+
+        // --- INICIALIZAÇÃO E EVENTOS ---
+        const init = async () => {
+            try {
+                const fetchSheet = async (url, sheetName) => {
+                    try {
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            throw new Error(`A resposta para a aba "${sheetName}" falhou (status: ${response.status}). Verifique se o GID para esta aba está correto e se ela foi publicada na web como CSV.`);
+                        }
+                        return response.text();
+                    } catch (networkError) {
+                        console.error(`Erro de rede ao buscar a aba "${sheetName}":`, networkError);
+                        throw new Error(`Não foi possível conectar à aba "${sheetName}". Verifique sua conexão com a internet ou um possível bloqueio de rede (CORS).`);
+                    }
+                };
+
+                const promises = [fetchSheet(ESTOQUE_URL, 'Estoque')];
+                if (ENVIO_URL) {
+                    promises.push(fetchSheet(ENVIO_URL, 'Envio'));
+                }
+                
+                const results = await Promise.allSettled(promises);
+
+                const estoqueResult = results[0];
+                if (estoqueResult.status === 'rejected') {
+                    throw estoqueResult.reason;
+                }
+                const estoqueCsv = estoqueResult.value;
+                
+                let envioCsv = '';
+                const envioResult = results[1];
+                if (envioResult) {
+                    if (envioResult.status === 'rejected') {
+                        console.warn('Falha ao carregar dados de "Envio":', envioResult.reason.message);
+                        const warningDiv = document.createElement('div');
+                        warningDiv.className = 'p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-100';
+                        warningDiv.setAttribute('role', 'alert');
+                        warningDiv.innerHTML = `
+                            <h3 class="font-bold text-lg mb-2">AÇÃO NECESSÁRIA: Falha ao carregar a aba "Envio"</h3>
+                            <p>O painel não consegue se conectar à sua aba "Envio" porque o GID (número de identificação) no código está incorreto. Por isso, o cálculo de saídas do estoque não está funcionando.</p>
+                            <p class="mt-2"><strong>COMO CORRIGIR:</strong></p>
+                            <ol class="list-decimal list-inside mt-1 space-y-1">
+                                <li>Abra o arquivo <strong>index.html</strong> que você está usando.</li>
+                                <li>Procure pela variável chamada <strong>ENVIO_GID</strong> (há um grande comentário de aviso acima dela).</li>
+                                <li>Substitua o número de exemplo (<strong>'${ENVIO_GID}'</strong>) pelo GID correto da sua planilha.</li>
+                            </ol>
+                            <p class="mt-2">Você encontra o GID correto no final do link ao clicar na sua aba "Envio" na planilha.</p>
+                        `;
+                        dom.contentArea.prepend(warningDiv);
+                    } else {
+                        envioCsv = envioResult.value;
+                    }
+                }
+
+                const initialStock = parseCSV(estoqueCsv);
+                const sentItems = envioCsv ? parseCSV(envioCsv) : [];
+
+                const sentItemsMap = sentItems.reduce((map, item) => {
+                    const key = item['Código'];
+                    if (key) {
+                        map[key] = (map[key] || 0) + (item['Quantidade'] || 0);
+                    }
+                    return map;
+                }, {});
+
+                const currentStock = initialStock.map(item => {
+                    const sentQuantity = sentItemsMap[item['Código']] || 0;
+                    const currentQuantity = item['Quantidade'] - sentQuantity;
+                    const newTotalValue = currentQuantity * item['Valor Unitário'];
+                    return {
+                        ...item,
+                        'Quantidade': currentQuantity,
+                        'Valor Total': newTotalValue
+                    };
+                });
+
+                state.inventoryData = currentStock;
+                state.categories = [...new Set(state.inventoryData.map(item => item['Categoria']).filter(Boolean))];
+                
+                dom.loader.style.display = 'none';
+                dom.lastUpdated.textContent = `Atualizado em: ${new Date().toLocaleString('pt-BR')}`;
+                render();
+
+            } catch (error) {
+                console.error(error);
+                dom.loader.style.display = 'none';
+                dom.errorMessage.textContent = error.message; 
+                dom.errorMessage.style.display = 'block';
+            }
+        };
+
+        dom.tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                state.activeTab = tab.dataset.tab;
+                render();
+            });
         });
 
-    } catch (err) {
-        console.error(`Erro ao atualizar a aba ${sheetName}:`, err);
-        alert(`Falha ao salvar dados em ${sheetName}. Tente novamente.`);
-    } finally {
-        hideLoading();
-    }
-}
-
-// --- Lógica do Estoque (com integração) ---
-window.renderProductsTable = function(filter = '') {
-    const tableBody = document.getElementById('products-table');
-    tableBody.innerHTML = '';
-    const filteredProducts = products.filter(p => p.produto && p.produto.toLowerCase().includes(filter.toLowerCase()));
-    if (filteredProducts.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="10" class="text-center p-5 text-gray-500">Nenhum produto encontrado.</td></tr>`;
-        return;
-    }
-    filteredProducts.forEach(p => {
-        const valorTotal = (p.quantidade || 0) * (p.valorUnitario || 0);
-        const isLowStock = p.quantidade <= p.estoqueMinimo;
-        const row = `
-            <tr class="${isLowStock ? 'bg-red-100' : ''}">
-                <td class="px-6 py-4">${p.codigo}</td>
-                <td class="px-6 py-4 font-medium">${p.produto}</td>
-                <td class="px-6 py-4">${p.categoria}</td>
-                <td class="px-6 py-4 font-bold">${p.quantidade}</td>
-                <td class="px-6 py-4">${p.estoqueMinimo}</td>
-                <td class="px-6 py-4">${formatCurrency(p.valorUnitario)}</td>
-                <td class="px-6 py-4">${formatCurrency(valorTotal)}</td>
-                <td class="px-6 py-4">${formatDate(p.dataEntrada)}</td>
-                <td class="px-6 py-4">${p.dataValidade ? formatDate(p.dataValidade) : 'N/A'}</td>
-                <td class="px-6 py-4 text-center">
-                    <button onclick="openDispatchModal(${p.id})" title="Baixar Estoque" class="p-1 text-blue-600 hover:text-blue-800"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.37 2.63a1 1 0 0 0-1.41 0l-7 7a1 1 0 0 0 0 1.41l4 4a1 1 0 0 0 1.41 0l7-7a1 1 0 0 0 0-1.41l-4-4Z"/></svg></button>
-                    <button onclick="openProductModal(${p.id})" title="Editar" class="p-1 text-yellow-600 hover:text-yellow-800"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
-                    <button onclick="deleteProduct(${p.id})" title="Excluir" class="p-1 text-red-600 hover:text-red-800"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-                </td>
-            </tr>
-        `;
-        tableBody.innerHTML += row;
-    });
-}
-
-window.saveProduct = async function(event) {
-    event.preventDefault();
-    const id = document.getElementById('product-id').value;
-    const newProduct = {
-        fundo: document.getElementById('fundo').value,
-        codigo: document.getElementById('codigo').value,
-        produto: document.getElementById('produto').value,
-        categoria: document.getElementById('categoria').value,
-        quantidade: parseInt(document.getElementById('quantidade').value),
-        unidade: document.getElementById('unidade').value,
-        valorUnitario: parseFloat(document.getElementById('valor-unitario').value),
-        estoqueMinimo: parseInt(document.getElementById('estoque-minimo').value),
-        dataEntrada: document.getElementById('data-entrada').value,
-        dataValidade: document.getElementById('data-validade').value,
-    };
-    
-    if (id) {
-        const index = products.findIndex(p => p.id == id);
-        products[index] = { ...products[index], ...newProduct };
-    } else {
-        newProduct.id = Date.now();
-        products.push(newProduct);
-    }
-    
-    await updateSheet('Products', products);
-    renderProductsTable();
-    closeModal('product-modal');
-}
-
-window.deleteProduct = async function(id) {
-    if (confirm('Tem certeza que deseja excluir este produto? A ação será salva na planilha.')) {
-        products = products.filter(p => p.id !== id);
-        await updateSheet('Products', products);
-        renderProductsTable();
-    }
-}
-
-// --- Lógica das Unidades (com integração) ---
-window.addUnit = async function() {
-    const unitNameInput = document.getElementById('unitNameInput');
-    const name = unitNameInput.value.trim();
-    if (name) {
-        const newUnit = { id: Date.now(), name };
-        units.push(newUnit);
-        await updateSheet('Units', units);
-        renderUnits();
-        unitNameInput.value = '';
-    }
-}
-
-window.renderUnits = function() {
-    const unitsList = document.getElementById('units-list');
-    unitsList.innerHTML = '';
-    units.forEach(unit => {
-        const unitDispatches = dispatches.filter(d => d.unitId === unit.id);
-        const totalItems = unitDispatches.reduce((sum, d) => sum + d.quantity, 0);
-
-        const card = `
-        <div class="card p-5">
-            <h4 class="font-bold text-lg">${unit.name}</h4>
-            <p class="text-gray-500 text-sm">Total de itens retirados: ${totalItems}</p>
-            <details class="mt-2 text-sm">
-                <summary class="cursor-pointer">Ver Histórico</summary>
-                <ul class="list-disc pl-5 mt-2">
-                    ${unitDispatches.length > 0 ? unitDispatches.map(d => `<li>${formatDate(d.date)}: ${d.quantity}x ${products.find(p=>p.id===d.productId)?.produto || 'Item removido'}</li>`).join('') : '<li>Nenhuma retirada.</li>'}
-                </ul>
-            </details>
-        </div>`;
-        unitsList.innerHTML += card;
-    });
-}
-
-// --- Lógica de Baixa (com integração) ---
-window.handleDispatch = async function(event) {
-    event.preventDefault();
-    const productId = parseInt(document.getElementById('dispatch-product-id').value);
-    const unitId = parseInt(document.getElementById('dispatch-unit').value);
-    const quantity = parseInt(document.getElementById('dispatch-quantity').value);
-
-    const product = products.find(p => p.id === productId);
-    if (quantity > product.quantidade) {
-        alert('Erro: Quantidade de baixa maior que o estoque atual.');
-        return;
-    }
-
-    product.quantidade -= quantity;
-    dispatches.push({
-        id: Date.now(),
-        productId,
-        unitId,
-        quantity,
-        date: new Date().toISOString().split('T')[0]
-    });
-
-    await updateSheet('Products', products);
-    await updateSheet('Dispatches', dispatches);
-    
-    renderProductsTable();
-    closeModal('dispatch-modal');
-}
-
-
-// --- Funções Utilitárias, Dashboard e Modais (sem grandes alterações) ---
-window.openConfigModal = function() {
-    document.getElementById('api-key').value = API_KEY || '';
-    document.getElementById('client-id').value = CLIENT_ID || '';
-    document.getElementById('spreadsheet-id').value = SPREADSHEET_ID || '';
-    const modal = document.getElementById('config-modal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-}
-
-window.saveConfig = function(event) {
-    event.preventDefault();
-    API_KEY = document.getElementById('api-key').value;
-    CLIENT_ID = document.getElementById('client-id').value;
-    SPREADSHEET_ID = document.getElementById('spreadsheet-id').value;
-    
-    localStorage.setItem('googleApiConfig', JSON.stringify({ API_KEY, CLIENT_ID, SPREADSHEET_ID }));
-    closeModal('config-modal');
-    location.reload(); // Recarrega para inicializar as APIs com as novas chaves
-}
-
-function loadConfig() {
-    const config = JSON.parse(localStorage.getItem('googleApiConfig'));
-    if (config) {
-        API_KEY = config.API_KEY;
-        CLIENT_ID = config.CLIENT_ID;
-        SPREADSHEET_ID = config.SPREADSHEET_ID;
-    }
-}
-
-window.openProductModal = function(id) {
-    const modal = document.getElementById('product-modal');
-    const form = document.getElementById('product-form');
-    form.reset();
-    document.getElementById('product-id').value = '';
-    
-    if (id !== null) {
-        const product = products.find(p => p.id === id);
-        document.getElementById('modal-title').innerText = 'Editar Produto';
-        document.getElementById('product-id').value = product.id;
-        document.getElementById('fundo').value = product.fundo;
-        document.getElementById('codigo').value = product.codigo;
-        document.getElementById('produto').value = product.produto;
-        document.getElementById('categoria').value = product.categoria;
-        document.getElementById('quantidade').value = product.quantidade;
-        document.getElementById('unidade').value = product.unidade;
-        document.getElementById('valor-unitario').value = product.valorUnitario;
-        document.getElementById('estoque-minimo').value = product.estoqueMinimo;
-        document.getElementById('data-entrada').value = product.dataEntrada;
-        document.getElementById('data-validade').value = product.dataValidade;
-    } else {
-        document.getElementById('modal-title').innerText = 'Adicionar Novo Produto';
-    }
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-}
-
-window.openDispatchModal = function(productId) {
-    const product = products.find(p => p.id === productId);
-    document.getElementById('dispatch-product-name').textContent = product.produto;
-    document.getElementById('dispatch-product-id').value = productId;
-    const unitSelect = document.getElementById('dispatch-unit');
-    unitSelect.innerHTML = '<option value="">Selecione uma unidade</option>';
-    units.forEach(u => {
-        unitSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
-    });
-    const modal = document.getElementById('dispatch-modal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-}
-
-window.closeModal = function(modalId) {
-    document.getElementById(modalId).classList.add('hidden');
-    document.getElementById(modalId).classList.remove('flex');
-}
-
-window.formatCurrency = function(value) {
-    if (typeof value !== 'number') return 'R$ 0,00';
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
-
-window.formatDate = function(dateString) {
-    if (!dateString) return '';
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('pt-BR');
-}
-
-let categoryChartInstance, valueChartInstance;
-window.updateDashboard = function() {
-    if (products.length === 0) return;
-    const totalValue = products.reduce((sum, p) => sum + ((p.quantidade || 0) * (p.valorUnitario || 0)), 0);
-    const lowStockItems = products.filter(p => p.quantidade <= p.estoqueMinimo).length;
-    const categories = [...new Set(products.map(p => p.categoria))];
-    document.getElementById('dashboard-total-value').innerText = formatCurrency(totalValue);
-    document.getElementById('dashboard-total-items').innerText = products.length;
-    document.getElementById('dashboard-total-categories').innerText = categories.length;
-    document.getElementById('dashboard-low-stock').innerText = lowStockItems;
-    renderCharts(categories);
-}
-
-function renderCharts(categories) {
-    const ctxCategory = document.getElementById('categoryChart').getContext('2d');
-    const ctxValue = document.getElementById('valueChart').getContext('2d');
-    const categoryCounts = categories.map(cat => products.filter(p => p.categoria === cat).length);
-    const categoryValues = categories.map(cat => products.filter(p => p.categoria === cat).reduce((sum, p) => sum + (p.quantidade * p.valorUnitario), 0));
-    const chartColors = ['#1e88e5', '#d81b60', '#ffc107', '#004d40', '#7e57c2', '#f4511e', '#43a047', '#546e7a'];
-    if (categoryChartInstance) categoryChartInstance.destroy();
-    categoryChartInstance = new Chart(ctxCategory, { type: 'doughnut', data: { labels: categories, datasets: [{ label: 'Itens por Categoria', data: categoryCounts, backgroundColor: chartColors }] } });
-    if (valueChartInstance) valueChartInstance.destroy();
-    valueChartInstance = new Chart(ctxValue, { type: 'bar', data: { labels: categories, datasets: [{ label: 'Valor em Estoque (R$)', data: categoryValues, backgroundColor: chartColors }] }, options: { scales: { y: { beginAtZero: true } } } });
-}
-
-window.generateReport = function() {
-    const reportOutput = document.getElementById('report-output');
-    reportOutput.innerHTML = '';
-    const startDate = document.getElementById('report-start-date').value;
-    const endDate = document.getElementById('report-end-date').value;
-    let filteredDispatches = dispatches;
-    if (startDate) filteredDispatches = filteredDispatches.filter(d => d.date >= startDate);
-    if (endDate) filteredDispatches = filteredDispatches.filter(d => d.date <= endDate);
-    if (filteredDispatches.length === 0) {
-        reportOutput.innerHTML = '<p class="text-gray-500">Nenhuma movimentação encontrada.</p>';
-        return;
-    }
-    let reportHTML = `<h4 class="font-bold mb-4">Relatório de Movimentação</h4><table class="w-full text-sm"><thead class="bg-gray-100"><tr><th class="p-2 text-left">Data</th><th class="p-2 text-left">Produto</th><th class="p-2 text-left">Unidade</th><th class="p-2 text-left">Qtd.</th></tr></thead><tbody>`;
-    filteredDispatches.forEach(d => {
-        const product = products.find(p => p.id === d.productId);
-        const unit = units.find(u => u.id === d.unitId);
-        reportHTML += `<tr><td class="p-2 border-t">${formatDate(d.date)}</td><td class="p-2 border-t">${product ? product.produto : 'N/A'}</td><td class="p-2 border-t">${unit ? unit.name : 'N/A'}</td><td class="p-2 border-t">${d.quantity}</td></tr>`;
-    });
-    reportHTML += `</tbody></table>`;
-    reportOutput.innerHTML = reportHTML;
-}
-
-window.exportToCSV = function() {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += HEADERS.Products.join(",") + "\r\n";
-    products.forEach(p => {
-        const row = HEADERS.Products.map(header => `"${p[header] || ''}"`).join(",");
-        csvContent += row + "\r\n";
-    });
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "relatorio_estoque.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-</script>
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
 </body>
 </html>
+
 
