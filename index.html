@@ -239,7 +239,6 @@
 
         const renderExpirationView = () => {
             const view = document.getElementById('validade-view');
-            // Logic is the same, just ensure it uses getFilteredData
             const today = new Date(); today.setHours(0,0,0,0);
             const data = getFilteredData().map(item => {
                 const expiryDate = formatDate(item['Data de Validade']);
@@ -261,7 +260,6 @@
         
         const renderReportsView = () => {
             const view = document.getElementById('relatorios-view');
-            // Logic restored
              const { reportMonth, reportYear } = state.filters;
              const monthlySentData = state.sentItemsData.filter(item => {
                  const sentDate = formatDate(item['Data de Envio']);
@@ -304,7 +302,6 @@
         
         const renderEnviosView = () => {
              const view = document.getElementById('envios-view');
-             // Logic restored
              const itemsByUnit = state.sentItemsData.reduce((acc, item) => {
                 const unit = item['Unidade'] || 'Sem Unidade';
                 if(!acc[unit]) acc[unit] = [];
@@ -327,8 +324,9 @@
 
             try {
                 const fetchSheet = async (gid) => {
-                    const url = `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${gid}&_=${new Date().getTime()}`;
-                    const response = await fetch(url);
+                    // Removido o parâmetro de cache-busting para evitar possíveis bloqueios de rede
+                    const url = `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${gid}`;
+                    const response = await fetch(url, { cache: 'reload', mode: 'cors' });
                     if (!response.ok) throw new Error(`Falha ao carregar dados (GID: ${gid})`);
                     return response.text();
                 };
@@ -395,7 +393,11 @@
             } catch (error) {
                 console.error(error);
                 dom.loader.style.display = 'none';
-                dom.errorMessage.textContent = `Erro ao carregar dados: ${error.message}. Tente atualizar.`;
+                let userMessage = `Erro ao carregar dados: ${error.message}.`;
+                if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+                    userMessage = 'Erro de rede ao buscar os dados da planilha. Verifique sua conexão, ou se há algum bloqueio por antivírus/firewall. Tente atualizar a página.';
+                }
+                dom.errorMessage.textContent = userMessage;
                 dom.errorMessage.style.display = 'block';
             }
         };
