@@ -17,53 +17,24 @@
             color: #0284c7;
             background-color: #e0f2fe; /* sky-100 */
         }
-        .tab {
-            transition: all 0.3s ease;
-        }
-        .tab:hover {
-            background-color: #f1f5f9; /* slate-100 */
-            transform: translateY(-2px);
-        }
-        .view {
-            display: none;
-        }
-        .view-active {
-            display: block;
-        }
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f1f5f9;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
-        }
-        table {
-            border-collapse: separate;
-            border-spacing: 0;
-        }
-        th, td {
-            border-bottom: 1px solid #e5e7eb;
-        }
+        .view { display: none; }
+        .view-active { display: block; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         thead th {
             position: sticky;
             top: 0;
-            background-color: #f8fafc;
+            background-color: #f8fafc; /* slate-50 */
             z-index: 10;
-        }
-        .icon-modern {
-            filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
         }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800">
+
     <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        
         <header class="mb-6">
             <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div class="flex items-center">
@@ -76,28 +47,15 @@
                 <div id="last-updated" class="text-sm text-slate-500 self-center sm:self-auto"></div>
             </div>
         </header>
+
         <nav class="flex flex-wrap border-b border-slate-300 justify-center sm:justify-start mb-4">
-            <button data-tab="estoque" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle icon-modern" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4V4zm0 2v12h16V6H4zm4 0h8v2H8V6zm0 4h8v2H8v-2z"/></svg>
-                <span class="align-middle">Estoque Geral</span>
-            </button>
-            <button data-tab="minimo" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle icon-modern" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l10 17H2L12 2zm0 4v6m0 4h.01"/></svg>
-                <span class="align-middle">Estoque Mínimo</span>
-            </button>
-            <button data-tab="validade" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle icon-modern" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v2m12-2v2M4 5h16v14H4V5zm8 4v4m0 4h.01"/></svg>
-                <span class="align-middle">Controle de Validade</span>
-            </button>
-            <button data-tab="relatorios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle icon-modern" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14v4m4-6v6m4-8v8"/></svg>
-                <span class="align-middle">Relatório Mensal</span>
-            </button>
-            <button data-tab="envios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2 align-middle icon-modern" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7l7-4 7 4m-7 4v10m-7-6h14m-10 3h6"/></svg>
-                <span class="align-middle">Envios por Unidade</span>
-            </button>
+            <button data-tab="estoque" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">Estoque Geral</button>
+            <button data-tab="minimo" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">Sugestão de Compras</button>
+            <button data-tab="validade" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">Controle de Validade</button>
+            <button data-tab="relatorios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">Relatório Mensal</button>
+            <button data-tab="envios" class="tab py-3 px-4 font-semibold text-slate-600 border-b-2 border-transparent hover:bg-slate-200 transition-colors duration-200 rounded-t-md">Envios por Unidade</button>
         </nav>
+
         <main id="content-area" class="bg-white rounded-lg shadow-lg p-6 min-h-[60vh]">
             <div id="loader" class="flex justify-center items-center h-64">
                 <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-sky-500"></div>
@@ -112,22 +70,23 @@
     </div>
 
     <script type="module">
+        // --- CONFIGURAÇÕES ---
         const SPREADSHEET_ID = '2PACX-1vSq5-5mNONPvPSFwcvqXl3u5ClieB-tTk6WDCe0Rtzk87zgFMb6YaaMe2s3m0eTYXKa1mp_Gyo8w7er';
         const ESTOQUE_GID = '0';
         const ENVIO_GID = '812966811';
-        const MIN_STOCK_THRESHOLD = 10;
         const EXPIRATION_THRESHOLD_DAYS = 30;
+
         const ESTOQUE_URL = `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${ESTOQUE_GID}`;
         const ENVIO_URL = ENVIO_GID ? `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${ENVIO_GID}` : '';
-        const UNIT_TYPES = ['ARBIGOS', 'CRAS', 'CREAS', 'CT', 'SEDE'];
 
+        // --- ESTADO DA APLICAÇÃO ---
         const now = new Date();
         let state = {
             activeTab: 'estoque',
             inventoryData: [],
             sentItemsData: [],
+            consumptionData: new Map(),
             categories: [],
-            unitTypes: UNIT_TYPES,
             uniqueUnits: [],
             filters: {
                 searchTerm: '',
@@ -135,17 +94,16 @@
                 unitSearchTerm: '',
                 reportMonth: now.getMonth() + 1,
                 reportYear: now.getFullYear(),
-                reportUnitType: 'all',
-                reportSpecificUnit: 'all'
+                forecastMonths: 3, 
             },
             pagination: {
                 inventoryPage: 1,
-                itemsPerPage: 20
+                itemsPerPage: 15
             }
         };
 
+        // --- ELEMENTOS DO DOM ---
         const dom = {
-            app: document.getElementById('app'),
             loader: document.getElementById('loader'),
             errorMessage: document.getElementById('error-message'),
             tabs: document.querySelectorAll('.tab'),
@@ -153,10 +111,11 @@
             lastUpdated: document.getElementById('last-updated'),
         };
 
+        // --- FUNÇÕES AUXILIARES ---
         const parseCSV = (csvText) => {
             if (!csvText) return [];
             const lines = csvText.trim().split(/\r?\n/);
-            const headers = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.trim().replace(/"/g, ''));
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
             const data = [];
             for (let i = 1; i < lines.length; i++) {
                 if (lines[i].trim() === '') continue;
@@ -164,14 +123,11 @@
                 if (values.length === headers.length) {
                     let row = {};
                     headers.forEach((header, index) => {
-                        row[header] = values[index] || '';
+                        row[header.trim()] = values[index] || '';
                     });
                     row['Quantidade'] = parseInt(row['Quantidade'], 10) || 0;
-                    row['Valor Unitário'] = parseFloat(row['Valor Unitário']?.replace('R$', '').replace(',', '.') || 0);
-                    row['Valor Total'] = parseFloat(row['Valor Total']?.replace('R$', '').replace(',', '.') || 0);
+                    row['Valor Unitário'] = parseFloat(row['Valor Unitário']?.replace('R$', '').replace(',', '.')) || 0;
                     data.push(row);
-                } else {
-                    console.warn(`Pulando linha CSV mal formatada na linha ${i + 1}:`, lines[i]);
                 }
             }
             return data;
@@ -180,19 +136,11 @@
         const formatDate = (dateString) => {
             if (!dateString || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) return null;
             const [day, month, year] = dateString.split('/');
-            const date = new Date(`${year}-${month}-${day}`);
+            const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
             return isNaN(date) ? null : date;
         };
 
-        const formatCurrency = (value) => {
-            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
-        };
-
-        const getUnitType = (unitName) => {
-            if (!unitName) return 'Sem Unidade';
-            const upperUnit = unitName.toUpperCase();
-            return UNIT_TYPES.find(type => upperUnit.includes(type)) || 'Sem Unidade';
-        };
+        const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 
         const debounce = (func, delay = 300) => {
             let timer;
@@ -202,6 +150,7 @@
             };
         };
 
+        // --- FUNÇÕES DE RENDERIZAÇÃO ---
         const render = () => {
             dom.tabs.forEach(tab => {
                 tab.classList.toggle('tab-active', tab.dataset.tab === state.activeTab);
@@ -218,77 +167,69 @@
             }
         };
 
-        const createFiltersHTML = () => {
+        const createFiltersHTML = (showCategory = true) => {
             return `
-                <div class="flex flex-col sm:flex-row gap-4 mb-6 items-center">
-                    <input type="text" id="search-input" placeholder="Buscar por produto ou código..." class="w-full sm:w-1/2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 shadow-sm" value="${state.filters.searchTerm}">
-                    <select id="category-select" class="w-full sm:w-1/2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 shadow-sm">
+                <div class="flex flex-col sm:flex-row gap-4 mb-6">
+                    <input type="text" id="search-input" placeholder="Buscar por produto ou código..." class="w-full ${showCategory ? 'sm:w-1/2' : ''} p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500" value="${state.filters.searchTerm}">
+                    ${showCategory ? `
+                    <select id="category-select" class="w-full sm:w-1/2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500">
                         <option value="all">Todas as Categorias</option>
                         ${state.categories.map(cat => `<option value="${cat}" ${state.filters.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
-                    </select>
-                </div>
-            `;
+                    </select>` : ''}
+                </div>`;
         };
-
+        
         const createTableHTML = (data, columns) => {
-            if (data.length === 0) {
-                return '<p class="text-center text-slate-500 py-8">Nenhum item encontrado.</p>';
-            }
+            if (!data || data.length === 0) return '<p class="text-center text-slate-500 py-8">Nenhum item encontrado.</p>';
             return `
                 <div class="overflow-x-auto rounded-lg border border-slate-200 shadow-md">
                     <table class="w-full text-sm text-left text-slate-600">
                         <thead class="text-xs text-slate-700 uppercase bg-slate-50">
-                            <tr>
-                                ${columns.map(col => `<th scope="col" class="px-6 py-3">${col.header}</th>`).join('')}
-                            </tr>
+                            <tr>${columns.map(col => `<th scope="col" class="px-6 py-3">${col.header}</th>`).join('')}</tr>
                         </thead>
                         <tbody>
-                            ${data.map(item => `
-                                <tr class="bg-white border-b hover:bg-slate-50 transition-colors ${item.rowClass || ''}">
-                                    ${columns.map(col => `<td class="px-6 py-4 ${col.class || ''}">${col.render(item)}</td>`).join('')}
-                                </tr>
-                            `).join('')}
+                            ${data.map(item => `<tr class="bg-white border-b hover:bg-slate-50 transition-colors ${item.rowClass || ''}">
+                                ${columns.map(col => `<td class="px-6 py-4 ${col.class || ''}">${col.render(item)}</td>`).join('')}
+                            </tr>`).join('')}
                         </tbody>
                     </table>
-                </div>
-            `;
+                </div>`;
         };
 
         const createPaginationHTML = (totalPages, currentPage) => {
             if (totalPages <= 1) return '';
             let html = '<div class="flex justify-center items-center gap-2 mt-6 flex-wrap">';
-            html += `<button data-page="${currentPage - 1}" class="pagination-btn px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm" ${currentPage === 1 ? 'disabled' : ''}>Anterior</button>`;
+            html += `<button data-page="${currentPage - 1}" class="pagination-btn px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50" ${currentPage === 1 ? 'disabled' : ''}>Anterior</button>`;
             for (let i = 1; i <= totalPages; i++) {
-                const isActive = i === currentPage;
-                html += `<button data-page="${i}" class="pagination-btn px-4 py-2 rounded-md border ${isActive ? 'bg-sky-600 text-white border-sky-600' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'} shadow-sm">${i}</button>`;
+                html += `<button data-page="${i}" class="pagination-btn px-4 py-2 rounded-md border ${i === currentPage ? 'bg-sky-600 text-white border-sky-600' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'}">${i}</button>`;
             }
-            html += `<button data-page="${currentPage + 1}" class="pagination-btn px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm" ${currentPage === totalPages ? 'disabled' : ''}>Próximo</button>`;
+            html += `<button data-page="${currentPage + 1}" class="pagination-btn px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50" ${currentPage === totalPages ? 'disabled' : ''}>Próximo</button>`;
             html += '</div>';
             return html;
         };
 
-        const getFilteredData = () => {
-            return state.inventoryData.filter(item => {
+        const getFilteredData = (dataSource = state.inventoryData) => {
+            return dataSource.filter(item => {
                 const searchTerm = state.filters.searchTerm.toLowerCase();
                 const category = state.filters.category;
                 const matchesSearch = (item['Produto'] || '').toLowerCase().includes(searchTerm) || (item['Código'] || '').toLowerCase().includes(searchTerm);
-                const matchesCategory = category === 'all' || item['Categoria'] === category;
+                const matchesCategory = category === 'all' || (item['Categoria'] || '') === category;
                 return matchesSearch && matchesCategory;
             });
         };
 
         const addFilterEventListeners = () => {
             const searchInput = document.getElementById('search-input');
-            const categorySelect = document.getElementById('category-select');
             if (searchInput) {
-                searchInput.addEventListener('input', debounce((e) => {
+                searchInput.addEventListener('input', debounce(e => {
                     state.filters.searchTerm = e.target.value;
                     state.pagination.inventoryPage = 1;
                     render();
                 }));
             }
+            const categorySelect = document.getElementById('category-select');
             if (categorySelect) {
-                categorySelect.addEventListener('change', (e) => {
+                categorySelect.addEventListener('change', e => {
                     state.filters.category = e.target.value;
                     state.pagination.inventoryPage = 1;
                     render();
@@ -301,352 +242,204 @@
             const filteredData = getFilteredData();
             const { inventoryPage, itemsPerPage } = state.pagination;
             const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-            const startIndex = (inventoryPage - 1) * itemsPerPage;
-            const endIndex = startIndex + itemsPerPage;
-            const paginatedData = filteredData.slice(startIndex, endIndex);
+            const paginatedData = filteredData.slice((inventoryPage - 1) * itemsPerPage, inventoryPage * itemsPerPage);
             const columns = [
                 { header: 'Código', render: item => item['Código'] || 'N/A' },
                 { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold text-slate-800' },
                 { header: 'Categoria', render: item => item['Categoria'] || 'N/A' },
-                { header: 'Quantidade', render: item => item['Quantidade'], class: 'text-center font-bold' },
+                { header: 'Qtd. Atual', render: item => item.Quantidade, class: 'text-center font-bold' },
                 { header: 'Unid. Medida', render: item => item['Unidade'] || 'N/A' },
                 { header: 'Valor Unitário', render: item => formatCurrency(item['Valor Unitário']) },
-                { header: 'Valor Total', render: item => formatCurrency(item['Valor Total']) },
-                { header: 'Data de Validade', render: item => item['Data de Validade'] || 'N/A' }
+                { header: 'Valor Total', render: item => formatCurrency(item.Quantidade * item['Valor Unitário']) },
+                { header: 'Validade', render: item => item['Data de Validade'] || 'N/A' }
             ];
             view.innerHTML = createFiltersHTML() + createTableHTML(paginatedData, columns) + createPaginationHTML(totalPages, inventoryPage);
             addFilterEventListeners();
             document.querySelectorAll('.pagination-btn').forEach(button => {
-                button.addEventListener('click', (e) => {
+                button.addEventListener('click', e => {
                     const page = parseInt(e.currentTarget.dataset.page);
-                    if (!isNaN(page)) {
-                        state.pagination.inventoryPage = page;
-                        render();
-                    }
+                    if (page) { state.pagination.inventoryPage = page; render(); }
                 });
             });
         };
 
         const renderMinStockView = () => {
             const view = document.getElementById('minimo-view');
-            const filtered = getFilteredData();
-            const data = filtered.filter(item => item['Quantidade'] <= MIN_STOCK_THRESHOLD);
-            const columns = [
-                { header: 'Código', render: item => item['Código'] || 'N/A' },
-                { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold text-slate-800' },
-                { header: 'Categoria', render: item => item['Categoria'] || 'N/A' },
-                { header: 'Quantidade', render: item => `<span class="bg-red-100 text-red-800 text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded-full">${item['Quantidade']}</span>`, class: 'text-center font-bold' },
-                { header: 'Unid. Medida', render: item => item['Unidade'] || 'N/A' },
-            ];
-            view.innerHTML = `
-                <div class="p-4 mb-6 text-sm text-yellow-800 rounded-lg bg-yellow-50 shadow-sm" role="alert">
-                    <span class="font-medium">Atenção!</span> Itens com quantidade igual ou inferior a ${MIN_STOCK_THRESHOLD}.
-                </div>
-            ` + createFiltersHTML() + createTableHTML(data, columns);
-            addFilterEventListeners();
-        };
+            const filteredData = getFilteredData();
 
+            const suggestions = filteredData.map(item => {
+                const consumption = state.consumptionData.get(item['Código']) || { avg: 0 };
+                const neededStock = Math.ceil(consumption.avg * state.filters.forecastMonths);
+                const purchaseSuggestion = Math.max(0, neededStock - item.Quantidade);
+                return { ...item, avgConsumption: consumption.avg, neededStock, purchaseSuggestion };
+            }).filter(item => item.purchaseSuggestion > 0).sort((a,b) => b.purchaseSuggestion - a.purchaseSuggestion);
+
+            const columns = [
+                { header: 'Produto', render: item => item.Produto || 'N/A', class: 'font-semibold' },
+                { header: 'Estoque Atual', render: item => item.Quantidade, class: 'text-center' },
+                { header: 'Média Saída/Mês', render: item => item.avgConsumption.toFixed(1), class: 'text-center' },
+                { header: `Necessidade (${state.filters.forecastMonths} meses)`, render: item => item.neededStock, class: 'text-center' },
+                { header: 'Sugestão de Compra', render: item => `<span class="bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full">${item.purchaseSuggestion}</span>`, class: 'text-center' },
+            ];
+
+            view.innerHTML = `
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
+                    <label for="forecast-slider" class="block font-semibold mb-2">Período para Previsão de Compra: <span class="text-sky-600 font-bold">${state.filters.forecastMonths} meses</span></label>
+                    <input type="range" id="forecast-slider" min="1" max="12" value="${state.filters.forecastMonths}" class="w-full">
+                </div>
+            ` + createFiltersHTML() + createTableHTML(suggestions, columns);
+            addFilterEventListeners();
+            document.getElementById('forecast-slider').addEventListener('input', e => {
+                state.filters.forecastMonths = parseInt(e.target.value);
+                render();
+            });
+        };
+        
         const renderExpirationView = () => {
             const view = document.getElementById('validade-view');
             const today = new Date();
             today.setHours(0,0,0,0);
-            const filtered = getFilteredData();
-            const data = filtered
-                .map(item => {
+            
+            const data = getFilteredData().map(item => {
                     const expiryDate = formatDate(item['Data de Validade']);
                     if (!expiryDate) return { ...item, daysToExpire: Infinity, status: 'ok' };
                     const diffTime = expiryDate - today;
                     const daysToExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    let status = 'ok';
-                    let rowClass = '';
-                    if (daysToExpire < 0) {
-                        status = 'Vencido';
-                        rowClass = 'bg-red-50 text-red-900';
-                    } else if (daysToExpire <= EXPIRATION_THRESHOLD_DAYS) {
-                        status = 'Vence em breve';
-                        rowClass = 'bg-yellow-50 text-yellow-900';
-                    }
+                    let status = 'ok', rowClass = '';
+                    if (daysToExpire < 0) { status = 'Vencido'; rowClass = 'bg-red-50 text-red-900'; }
+                    else if (daysToExpire <= EXPIRATION_THRESHOLD_DAYS) { status = 'Vence em breve'; rowClass = 'bg-yellow-50 text-yellow-900'; }
                     return { ...item, daysToExpire, status, rowClass };
                 })
                 .filter(item => item.status !== 'ok')
                 .sort((a, b) => a.daysToExpire - b.daysToExpire);
+
             const columns = [
-                { header: 'Produto', render: item => item['Produto'] || 'N/A', class: 'font-semibold' },
-                { header: 'Data de Validade', render: item => item['Data de Validade'] || 'N/A' },
+                { header: 'Produto', render: item => item.Produto || 'N/A', class: 'font-semibold' },
+                { header: 'Validade', render: item => item['Data de Validade'] || 'N/A' },
                 { header: 'Status', render: item => {
                     if (item.status === 'Vencido') return `<span class="bg-red-200 text-red-900 px-3 py-1 rounded-full text-xs font-bold">${item.status}</span>`;
                     if (item.status === 'Vence em breve') return `<span class="bg-yellow-200 text-yellow-900 px-3 py-1 rounded-full text-xs font-bold">${item.status} (${item.daysToExpire} dias)</span>`;
                     return '';
                 }},
-                { header: 'Quantidade', render: item => item['Quantidade'], class: 'text-center font-bold' },
+                { header: 'Quantidade', render: item => item.Quantidade, class: 'text-center font-bold' },
             ];
-            view.innerHTML = `
-                <div class="p-4 mb-6 text-sm text-blue-800 rounded-lg bg-blue-50 shadow-sm" role="alert">
-                    Mostrando itens vencidos ou que irão vencer nos próximos <span class="font-medium">${EXPIRATION_THRESHOLD_DAYS} dias</span>.
-                </div>
-            ` + createFiltersHTML() + createTableHTML(data, columns);
+
+            view.innerHTML = `<div class="p-4 mb-6 text-sm text-blue-800 rounded-lg bg-blue-50">Mostrando itens vencidos ou que irão vencer nos próximos <span class="font-medium">${EXPIRATION_THRESHOLD_DAYS} dias</span>.</div>` + createFiltersHTML() + createTableHTML(data, columns);
             addFilterEventListeners();
         };
 
         const renderReportsView = () => {
             const view = document.getElementById('relatorios-view');
-            const { reportMonth, reportYear, reportUnitType, reportSpecificUnit } = state.filters;
+            const { reportMonth, reportYear } = state.filters;
 
             const monthlySentData = state.sentItemsData.filter(item => {
-                if (!item || !item['Data de Envio'] || !item['Produto']) return false;
                 const sentDate = formatDate(item['Data de Envio']);
-                if (!sentDate) return false;
-                const matchesDate = (sentDate.getMonth() + 1) === reportMonth && sentDate.getFullYear() === reportYear;
-                const unitType = getUnitType(item['Unidade']);
-                const matchesUnitType = reportUnitType === 'all' || unitType === reportUnitType;
-                const matchesSpecificUnit = reportSpecificUnit === 'all' || item['Unidade'] === reportSpecificUnit || (!item['Unidade'] && reportSpecificUnit === 'Sem Unidade');
-                return matchesDate && matchesUnitType && matchesSpecificUnit;
+                return sentDate && (sentDate.getMonth() + 1) === reportMonth && sentDate.getFullYear() === reportYear;
             });
 
-            const totalValue = monthlySentData.reduce((sum, item) => sum + ((item['Valor Unitário'] || 0) * item['Quantidade']), 0);
-            const totalItems = monthlySentData.reduce((sum, item) => sum + item['Quantidade'], 0);
+            const totalValue = monthlySentData.reduce((sum, item) => sum + (item.valor_unitario * item.Quantidade), 0);
+            const totalItems = monthlySentData.reduce((sum, item) => sum + item.Quantidade, 0);
 
             const itemsByProduct = monthlySentData.reduce((acc, item) => {
                 const product = item['Produto'] || 'Sem Nome';
-                if (!acc[product]) {
-                    acc[product] = { quantity: 0, value: 0 };
-                }
-                acc[product].quantity += item['Quantidade'];
-                acc[product].value += (item['Valor Unitário'] || 0) * item['Quantidade'];
+                if (!acc[product]) acc[product] = { quantity: 0, value: 0 };
+                acc[product].quantity += item.Quantidade;
+                acc[product].value += item.valor_unitario * item.Quantidade;
                 return acc;
             }, {});
 
-            const topProducts = Object.entries(itemsByProduct)
-                .sort(([,a],[,b]) => b.quantity - a.quantity)
-                .slice(0, 10);
-            const leastProducts = Object.entries(itemsByProduct)
-                .sort(([,a],[,b]) => a.quantity - b.quantity)
-                .slice(0, 10);
-
+            const topProducts = Object.entries(itemsByProduct).sort(([, a], [, b]) => b.quantity - a.quantity).slice(0, 10);
             const maxProductValue = Math.max(1, ...topProducts.map(([, data]) => data.quantity));
-            const minProductValue = Math.max(1, ...leastProducts.map(([, data]) => data.quantity));
-
+            
             const itemsByUnit = monthlySentData.reduce((acc, item) => {
                 const unit = item['Unidade'] || 'Sem Unidade';
-                if (!acc[unit]) acc[unit] = [];
+                if(!acc[unit]) acc[unit] = [];
                 acc[unit].push(item);
                 return acc;
             }, {});
 
-            const avgMonthlyDemand = state.sentItemsData
-                .reduce((acc, item) => {
-                    if (!item || !item['Data de Envio'] || !item['Produto']) return acc;
-                    const sentDate = formatDate(item['Data de Envio']);
-                    if (!sentDate) return acc;
-                    if (sentDate.getFullYear() !== reportYear) return acc;
-                    const product = item['Produto'] || 'Sem Nome';
-                    if (!acc[product]) acc[product] = { total: 0, months: new Set() };
-                    acc[product].total += item['Quantidade'];
-                    acc[product].months.add(sentDate.getMonth() + 1);
-                    return acc;
-                }, {});
-            const suggestions = Object.entries(avgMonthlyDemand).map(([product, data]) => {
-                const avgDemand = Math.ceil(data.total / (data.months.size || 1));
-                const currentStock = state.inventoryData.find(item => item['Produto'] === product)?.['Quantidade'] || 0;
-                const suggestedStock = Math.max(0, avgDemand - currentStock);
-                return { product, avgDemand, currentStock, suggestedStock };
-            }).filter(item => item.suggestedStock > 0).sort((a, b) => b.suggestedStock - a.suggestedStock);
-
             const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
             const currentYear = new Date().getFullYear();
-
+            
             view.innerHTML = `
-                <div class="bg-slate-50 p-6 rounded-lg border border-slate-200 mb-6 shadow-sm">
-                    <h3 class="font-semibold text-lg mb-4">Filtros do Relatório</h3>
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
+                    <h3 class="font-semibold text-lg mb-2">Filtros do Relatório</h3>
                     <div class="flex flex-col sm:flex-row gap-4">
-                        <select id="report-month-select" class="w-full sm:w-1/3 p-3 border border-slate-300 rounded-lg shadow-sm">
+                        <select id="report-month-select" class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md">
                             ${months.map((month, index) => `<option value="${index + 1}" ${reportMonth === (index + 1) ? 'selected' : ''}>${month}</option>`).join('')}
                         </select>
-                        <select id="report-year-select" class="w-full sm:w-1/3 p-3 border border-slate-300 rounded-lg shadow-sm">
-                            ${Array.from({length: 10}, (_, i) => currentYear - i).map(year => `<option value="${year}" ${reportYear === year ? 'selected' : ''}>${year}</option>`).join('')}
-                        </select>
-                        <select id="report-unit-type-select" class="w-full sm:w-1/3 p-3 border border-slate-300 rounded-lg shadow-sm">
-                            <option value="all">Todos os Tipos</option>
-                            ${state.unitTypes.map(type => `<option value="${type}" ${reportUnitType === type ? 'selected' : ''}>${type}</option>`).join('')}
-                            <option value="Sem Unidade" ${reportUnitType === 'Sem Unidade' ? 'selected' : ''}>Sem Unidade</option>
-                        </select>
-                        <select id="report-specific-unit-select" class="w-full sm:w-1/3 p-3 border border-slate-300 rounded-lg shadow-sm">
-                            <option value="all">Todas as Unidades</option>
-                            <option value="Sem Unidade" ${reportSpecificUnit === 'Sem Unidade' ? 'selected' : ''}>Sem Unidade</option>
-                            ${state.uniqueUnits.map(unit => `<option value="${unit}" ${reportSpecificUnit === unit ? 'selected' : ''}>${unit}</option>`).join('')}
+                        <select id="report-year-select" class="w-full sm:w-1/2 p-2 border border-slate-300 rounded-md">
+                            ${Array.from({length: 5}, (_, i) => currentYear - i).map(year => `<option value="${year}" ${reportYear === year ? 'selected' : ''}>${year}</option>`).join('')}
                         </select>
                     </div>
                 </div>
 
-                ${monthlySentData.length === 0 ? `
-                    <p class="text-center text-slate-500 py-8">Nenhum envio registrado para este período ou filtros selecionados. Verifique os dados na aba "Envio".</p>
-                ` : `
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                        <div class="bg-white p-6 rounded-lg shadow-md border">
-                            <h3 class="text-sm font-medium text-slate-500">Valor Total Enviado (Mês)</h3>
-                            <p class="mt-2 text-3xl font-bold text-sky-600">${formatCurrency(totalValue)}</p>
-                        </div>
-                        <div class="bg-white p-6 rounded-lg shadow-md border">
-                            <h3 class="text-sm font-medium text-slate-500">Total de Itens Enviados (Mês)</h3>
-                            <p class="mt-2 text-3xl font-bold text-sky-600">${totalItems.toLocaleString('pt-BR')}</p>
-                        </div>
+                ${monthlySentData.length === 0 ? '<p class="text-center text-slate-500 py-8">Nenhum envio registrado para este período.</p>' : `
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow border"><h3 class="text-sm font-medium text-slate-500">Valor Total Enviado</h3><p class="mt-2 text-3xl font-bold text-sky-600">${formatCurrency(totalValue)}</p></div>
+                    <div class="bg-white p-6 rounded-lg shadow border"><h3 class="text-sm font-medium text-slate-500">Total de Itens Enviados</h3><p class="mt-2 text-3xl font-bold text-sky-600">${totalItems.toLocaleString('pt-BR')}</p></div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow border mb-8">
+                    <h3 class="text-lg font-semibold mb-4">Top 10 Produtos Mais Enviados</h3>
+                    <div class="space-y-4">
+                        ${topProducts.map(([product, data]) => `
+                            <div class="w-full">
+                                <div class="flex justify-between mb-1"><span class="text-sm font-medium text-slate-700">${product}</span><span class="text-sm font-medium text-slate-500">${data.quantity} itens</span></div>
+                                <div class="w-full bg-slate-200 rounded-full h-4"><div class="bg-sky-500 h-4 rounded-full" style="width: ${(data.quantity / maxProductValue) * 100}%"></div></div>
+                            </div>`).join('')}
                     </div>
-                    <div class="bg-white p-6 rounded-lg shadow-md border mb-8">
-                        <h3 class="text-lg font-semibold mb-4">Top 10 Produtos Mais Enviados</h3>
-                        <div class="space-y-4">
-                            ${topProducts.map(([product, data]) => `
-                                <div class="w-full">
-                                    <div class="flex justify-between mb-1">
-                                        <span class="text-sm font-medium text-slate-700 truncate max-w-[70%]">${product}</span>
-                                        <span class="text-sm font-medium text-slate-500">${data.quantity} itens</span>
-                                    </div>
-                                    <div class="w-full bg-slate-200 rounded-full h-4 overflow-hidden">
-                                        <div class="bg-sky-500 h-4 rounded-full transition-all duration-300" style="width: ${(data.quantity / maxProductValue) * 100}%"></div>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    <div class="bg-white p-6 rounded-lg shadow-md border mb-8">
-                        <h3 class="text-lg font-semibold mb-4">Top 10 Produtos Menos Enviados</h3>
-                        <div class="space-y-4">
-                            ${leastProducts.map(([product, data]) => `
-                                <div class="w-full">
-                                    <div class="flex justify-between mb-1">
-                                        <span class="text-sm font-medium text-slate-700 truncate max-w-[70%]">${product}</span>
-                                        <span class="text-sm font-medium text-slate-500">${data.quantity} itens</span>
-                                    </div>
-                                    <div class="w-full bg-slate-200 rounded-full h-4 overflow-hidden">
-                                        <div class="bg-red-500 h-4 rounded-full transition-all duration-300" style="width: ${(data.quantity / minProductValue) * 100}%"></div>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    <div class="bg-white p-6 rounded-lg shadow-md border mb-8">
-                        <h3 class="text-lg font-semibold mb-4">Sugestões de Reposição</h3>
-                        ${suggestions.length === 0 ? '<p class="text-slate-500">Nenhuma sugestão de reposição necessária.</p>' : `
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-sm">
-                                    <thead class="text-slate-600">
-                                        <tr>
-                                            <th class="text-left font-semibold pb-2 px-2">Produto</th>
-                                            <th class="text-right font-semibold pb-2 px-2">Demanda Média Mensal</th>
-                                            <th class="text-right font-semibold pb-2 px-2">Estoque Atual</th>
-                                            <th class="text-right font-semibold pb-2 px-2">Reposição Sugerida</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${suggestions.map(item => `
-                                            <tr class="border-t border-slate-200 hover:bg-slate-100 transition-colors">
-                                                <td class="py-2 px-2">${item.product}</td>
-                                                <td class="py-2 px-2 text-right">${item.avgDemand}</td>
-                                                <td class="py-2 px-2 text-right">${item.currentStock}</td>
-                                                <td class="py-2 px-2 text-right font-semibold">${item.suggestedStock}</td>
-                                            </tr>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold mb-4 text-slate-800">Detalhes de Envios por Unidade</h3>
+                    <div class="space-y-6">
+                        ${Object.entries(itemsByUnit).sort().map(([unit, items]) => `
+                             <div class="bg-slate-50 rounded-lg shadow p-4">
+                                <h4 class="font-bold text-lg text-sky-700 mb-3">${unit}</h4>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead><tr class="text-slate-600"><th class="text-left font-semibold pb-2 px-2">Produto</th><th class="text-right font-semibold pb-2 px-2">Quantidade</th><th class="text-right font-semibold pb-2 px-2">Valor Total</th></tr></thead>
+                                        <tbody>
+                                        ${items.sort((a,b) => (b.Quantidade * b.valor_unitario) - (a.Quantidade * a.valor_unitario)).map(item => `
+                                            <tr class="border-t border-slate-200"><td class="py-2 px-2">${item.Produto}</td><td class="py-2 px-2 text-right">${item.Quantidade} ${item.unidade_medida || ''}</td><td class="py-2 px-2 text-right font-semibold">${formatCurrency(item.Quantidade * item.valor_unitario)}</td></tr>
                                         `).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                        `}
-                    </div>
-                    <div>
-                        <h3 class="text-xl font-semibold mb-4 text-slate-800">Detalhes de Envios por Unidade</h3>
-                        <div class="space-y-6">
-                            ${Object.entries(itemsByUnit).sort(([a], [b]) => a.localeCompare(b)).map(([unit, items]) => `
-                                <div class="bg-slate-50 rounded-lg shadow-md p-6">
-                                    <h4 class="font-bold text-lg text-sky-700 mb-4">${unit}</h4>
-                                    <div class="overflow-x-auto">
-                                        <table class="w-full text-sm">
-                                            <thead class="text-slate-600">
-                                                <tr>
-                                                    <th class="text-left font-semibold pb-2 px-2">Produto</th>
-                                                    <th class="text-right font-semibold pb-2 px-2">Quantidade</th>
-                                                    <th class="text-right font-semibold pb-2 px-2">Valor Total</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                ${items.sort((a,b) => (b.Quantidade * (b['Valor Unitário'] || 0)) - (a.Quantidade * (a['Valor Unitário'] || 0))).map(item => `
-                                                    <tr class="border-t border-slate-200 hover:bg-slate-100 transition-colors">
-                                                        <td class="py-2 px-2">${item.Produto}</td>
-                                                        <td class="py-2 px-2 text-right">${item.Quantidade} ${item.unidade_medida || ''}</td>
-                                                        <td class="py-2 px-2 text-right font-semibold">${formatCurrency(item.Quantidade * (item['Valor Unitário'] || 0))}</td>
-                                                    </tr>
-                                                `).join('')}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                        </tbody>
+                                    </table>
                                 </div>
-                            `).join('')}
-                        </div>
+                            </div>`).join('')}
                     </div>
-                `}
+                </div>`}
             `;
-
-            document.getElementById('report-month-select')?.addEventListener('change', e => {
-                state.filters.reportMonth = parseInt(e.target.value);
-                render();
-            });
-            document.getElementById('report-year-select')?.addEventListener('change', e => {
-                state.filters.reportYear = parseInt(e.target.value);
-                render();
-            });
-            document.getElementById('report-unit-type-select')?.addEventListener('change', e => {
-                state.filters.reportUnitType = e.target.value;
-                state.filters.reportSpecificUnit = 'all';
-                render();
-            });
-            document.getElementById('report-specific-unit-select')?.addEventListener('change', e => {
-                state.filters.reportSpecificUnit = e.target.value;
-                render();
-            });
+            document.getElementById('report-month-select')?.addEventListener('change', e => { state.filters.reportMonth = parseInt(e.target.value); render(); });
+            document.getElementById('report-year-select')?.addEventListener('change', e => { state.filters.reportYear = parseInt(e.target.value); render(); });
         };
-
+        
         const renderEnviosView = () => {
             const view = document.getElementById('envios-view');
-            const validSentItems = state.sentItemsData.filter(item => item && item['Produto']);
             const searchTerm = state.filters.unitSearchTerm.toLowerCase();
             const filteredUnits = state.uniqueUnits.filter(unitName => unitName.toLowerCase().includes(searchTerm));
+
             let html = `
-                <div class="mb-6">
-                    <input type="text" id="unit-search-input" value="${state.filters.unitSearchTerm}" placeholder="Buscar por unidade..." class="w-full sm:w-1/2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 shadow-sm">
+                <div class="mb-4">
+                    <input type="text" id="unit-search-input" value="${state.filters.unitSearchTerm}" placeholder="Buscar por unidade..." class="w-full sm:w-1/2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500">
                 </div>
                 <div class="space-y-8">
             `;
-            if (filteredUnits.length === 0 && searchTerm) {
-                html += '<p class="text-center text-slate-500 py-8 col-span-full">Nenhuma unidade encontrada.</p>';
+            if (filteredUnits.length === 0) {
+                html += '<p class="text-center text-slate-500 py-8">Nenhuma unidade encontrada.</p>';
             } else {
-                const unitsToShow = searchTerm ? filteredUnits : state.uniqueUnits.concat(['Sem Unidade']);
-                unitsToShow.sort().forEach(unit => {
-                    const unitItems = validSentItems.filter(item => (item['Unidade'] || 'Sem Unidade') === unit);
-                    if (unitItems.length === 0) return;
+                filteredUnits.forEach(unit => {
                     html += `
-                        <div class="bg-slate-50 rounded-lg shadow-md p-6">
-                            <h3 class="font-bold text-lg text-sky-700 mb-4">${unit}</h3>
+                        <div class="bg-slate-50 rounded-lg shadow p-4">
+                            <h3 class="font-bold text-lg text-sky-700 mb-3">${unit}</h3>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-sm">
-                                    <thead class="text-slate-600">
-                                        <tr>
-                                            <th class="text-left font-semibold pb-2 px-2">Data Envio</th>
-                                            <th class="text-left font-semibold pb-2 px-2">Produto</th>
-                                            <th class="text-right font-semibold pb-2 px-2">Quantidade</th>
-                                        </tr>
-                                    </thead>
+                                    <thead><tr class="text-slate-600"><th class="text-left font-semibold pb-2 px-2">Data Envio</th><th class="text-left font-semibold pb-2 px-2">Produto</th><th class="text-right font-semibold pb-2 px-2">Quantidade</th></tr></thead>
                                     <tbody>
-                                        ${unitItems
-                                            .sort((a, b) => {
-                                                const dateA = formatDate(a['Data de Envio']);
-                                                const dateB = formatDate(b['Data de Envio']);
-                                                if (!dateA) return 1;
-                                                if (!dateB) return -1;
-                                                return dateB - dateA;
-                                            })
+                                        ${state.sentItemsData
+                                            .filter(item => item['Unidade'] === unit)
+                                            .sort((a, b) => (formatDate(b['Data de Envio']) || 0) - (formatDate(a['Data de Envio']) || 0))
                                             .map(item => `
-                                            <tr class="border-t border-slate-200 hover:bg-slate-100 transition-colors">
-                                                <td class="py-2 px-2 whitespace-nowrap">${item['Data de Envio'] || 'N/A'}</td>
-                                                <td class="py-2 px-2">${item['Produto'] || 'N/A'}</td>
-                                                <td class="py-2 px-2 text-right font-semibold">${item['Quantidade'] || 0} ${item.unidade_medida || ''}</td>
-                                            </tr>
+                                            <tr class="border-t border-slate-200"><td class="py-2 px-2 whitespace-nowrap">${item['Data de Envio'] || 'N/A'}</td><td class="py-2 px-2">${item['Produto'] || 'N/A'}</td><td class="py-2 px-2 text-right font-semibold">${item.Quantidade || 0} ${item.unidade_medida || ''}</td></tr>
                                         `).join('')}
                                     </tbody>
                                 </table>
@@ -657,91 +450,78 @@
             }
             html += '</div>';
             view.innerHTML = html;
-            const unitSearchInput = document.getElementById('unit-search-input');
-            if (unitSearchInput) {
-                unitSearchInput.addEventListener('input', debounce((e) => {
-                    state.filters.unitSearchTerm = e.target.value;
-                    render();
-                }));
-            }
+            document.getElementById('unit-search-input')?.addEventListener('input', debounce(e => { state.filters.unitSearchTerm = e.target.value; render(); }));
         };
 
         const init = async () => {
             try {
                 const fetchSheet = async (url, sheetName) => {
-                    try {
-                        const response = await fetch(url, { cache: 'no-store' });
-                        if (!response.ok) {
-                            throw new Error(`Resposta para "${sheetName}" falhou (status: ${response.status}). Verifique o GID.`);
-                        }
-                        return await response.text();
-                    } catch (networkError) {
-                        console.error(`Erro de rede para "${sheetName}":`, networkError);
-                        throw new Error(`Não foi possível conectar à "${sheetName}". Verifique a conexão ou CORS.`);
-                    }
+                    const response = await fetch(url, { cache: 'no-store' });
+                    if (!response.ok) throw new Error(`Falha ao carregar "${sheetName}" (status: ${response.status}). Verifique o GID.`);
+                    return response.text();
                 };
 
-                const promises = [fetchSheet(ESTOQUE_URL, 'Estoque')];
-                if (ENVIO_URL) {
-                    promises.push(fetchSheet(ENVIO_URL, 'Envio'));
-                }
-                
-                const results = await Promise.allSettled(promises);
-                const estoqueResult = results[0];
-                if (estoqueResult.status === 'rejected') {
-                    throw estoqueResult.reason;
-                }
+                const [estoqueResult, envioResult] = await Promise.allSettled([
+                    fetchSheet(ESTOQUE_URL, 'Estoque'),
+                    ENVIO_URL ? fetchSheet(ENVIO_URL, 'Envio') : Promise.resolve('')
+                ]);
+
+                if (estoqueResult.status === 'rejected') throw estoqueResult.reason;
                 const estoqueCsv = estoqueResult.value;
                 let envioCsv = '';
-                const envioResult = results[1];
-                if (envioResult) {
-                    if (envioResult.status === 'rejected') {
-                        console.warn('Falha ao carregar "Envio":', envioResult.reason.message);
-                        const warningDiv = document.createElement('div');
-                        warningDiv.className = 'p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-100 shadow-sm';
-                        warningDiv.setAttribute('role', 'alert');
-                        warningDiv.innerHTML = `<h3 class="font-bold">Aviso:</h3> <p>Não foi possível carregar a aba "Envio". Estoque pode estar incorreto. Verifique o GID.</p>`;
-                        dom.contentArea.prepend(warningDiv);
-                    } else {
-                        envioCsv = envioResult.value;
-                    }
+                if (envioResult.status === 'rejected') {
+                    console.warn('Falha ao carregar "Envio":', envioResult.reason.message);
+                } else {
+                    envioCsv = envioResult.value;
                 }
 
                 const initialStock = parseCSV(estoqueCsv);
-                const productDetailsMap = new Map(initialStock.map(item => [item['Código'], { unidade_medida: item['Unidade'], valor_unitario: item['Valor Unitário'] }]));
+                const productDetailsMap = new Map(initialStock.map(item => [item['Código'], { unidade_medida: item['Unidade'], valor_unitario: item['Valor Unitário'], categoria: item['Categoria'] }]));
+
                 const sentItems = (envioCsv ? parseCSV(envioCsv) : []).map(item => {
-                    const details = productDetailsMap.get(item['Código']) || { unidade_medida: '', valor_unitario: 0 };
+                    const details = productDetailsMap.get(item['Código']) || {};
                     return { ...item, ...details };
                 }).filter(item => item['Produto']);
-                
                 state.sentItemsData = sentItems;
-                state.uniqueUnits = [...new Set(sentItems.map(item => item['Unidade']).filter(Boolean))].sort();
-                
+
+                const consumption = new Map();
+                sentItems.forEach(item => {
+                    const date = formatDate(item['Data de Envio']);
+                    if (!date || !item['Código']) return;
+                    const monthYear = `${date.getMonth() + 1}-${date.getFullYear()}`;
+                    if (!consumption.has(item['Código'])) {
+                        consumption.set(item['Código'], { total: 0, months: new Set() });
+                    }
+                    const record = consumption.get(item['Código']);
+                    record.total += item.Quantidade;
+                    record.months.add(monthYear);
+                });
+
+                consumption.forEach((value, key) => {
+                    value.avg = value.months.size > 0 ? value.total / value.months.size : 0;
+                });
+                state.consumptionData = consumption;
+
                 const sentItemsMap = sentItems.reduce((map, item) => {
-                    const key = item['Código'];
-                    if (key) {
-                        map[key] = (map[key] || 0) + (item['Quantidade'] || 0);
+                    if (item['Código']) {
+                        map[item['Código']] = (map[item['Código']] || 0) + item.Quantidade;
                     }
                     return map;
                 }, {});
 
-                const currentStock = initialStock.map(item => {
-                    const sentQuantity = sentItemsMap[item['Código']] || 0;
-                    const currentQuantity = item['Quantidade'] - sentQuantity;
-                    const newTotalValue = currentQuantity * item['Valor Unitário'];
-                    return {
-                        ...item,
-                        'Quantidade': currentQuantity,
-                        'Valor Total': newTotalValue
-                    };
-                }).filter(item => item['Quantidade'] >= 0);
-
+                const currentStock = initialStock.map(item => ({
+                    ...item,
+                    Quantidade: (item.Quantidade || 0) - (sentItemsMap[item['Código']] || 0)
+                }));
                 state.inventoryData = currentStock;
-                state.categories = [...new Set(state.inventoryData.map(item => item['Categoria']).filter(Boolean))].sort();
+
+                state.categories = [...new Set(initialStock.map(item => item['Categoria']).filter(Boolean).map(c => c.trim()))].sort();
+                state.uniqueUnits = [...new Set(sentItems.map(item => item['Unidade']).filter(Boolean))].sort();
                 
                 dom.loader.style.display = 'none';
                 dom.lastUpdated.textContent = `Atualizado em: ${new Date().toLocaleString('pt-BR')}`;
                 render();
+
             } catch (error) {
                 console.error(error);
                 dom.loader.style.display = 'none';
@@ -761,3 +541,4 @@
     </script>
 </body>
 </html>
+
