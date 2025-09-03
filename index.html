@@ -265,13 +265,13 @@
                  const sentDate = formatDate(item['Data de Envio']);
                  return sentDate && (sentDate.getMonth() + 1) === reportMonth && sentDate.getFullYear() === reportYear;
              });
-             const totalValue = monthlySentData.reduce((sum, item) => sum + (item.valor_unitario * item.Quantidade), 0);
+             const totalValue = monthlySentData.reduce((sum, item) => sum + (item['Valor Unitário'] * item.Quantidade), 0);
              const totalItems = monthlySentData.reduce((sum, item) => sum + item.Quantidade, 0);
              const itemsByUnit = monthlySentData.reduce((acc, item) => {
                 const unit = item['Unidade'] || 'Sem Unidade';
                 if(!acc[unit]) acc[unit] = { items: [], totalValue: 0 };
                 acc[unit].items.push(item);
-                acc[unit].totalValue += item.valor_unitario * item.Quantidade;
+                acc[unit].totalValue += (item['Valor Unitário'] || 0) * item.Quantidade;
                 return acc;
              }, {});
              const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -291,7 +291,7 @@
                     <div class="bg-slate-50 rounded-lg shadow p-4"><h4 class="font-bold text-lg text-sky-700 mb-3">${unit}</h4>
                     <table class="w-full text-sm">
                      <thead><tr><th class="text-left pb-2">Produto</th><th class="text-right pb-2">Quantidade</th><th class="text-right pb-2">Valor</th></tr></thead>
-                     <tbody>${data.items.map(item => `<tr><td class="py-1">${item.Produto}</td><td class="text-right">${item.Quantidade}</td><td class="text-right">${formatCurrency(item.Quantidade * item.valor_unitario)}</td></tr>`).join('')}</tbody>
+                     <tbody>${data.items.map(item => `<tr><td class="py-1">${item['Produto']}</td><td class="text-right">${item.Quantidade}</td><td class="text-right">${formatCurrency(item.Quantidade * (item['Valor Unitário'] || 0))}</td></tr>`).join('')}</tbody>
                     </table>
                     </div>`).join('')}
                 </div>`}
@@ -313,7 +313,7 @@
                 <table class="w-full text-sm">
                     <thead><tr><th class="text-left pb-2">Data</th><th class="text-left pb-2">Produto</th><th class="text-right pb-2">Quantidade</th></tr></thead>
                     <tbody>${items.sort((a,b) => (formatDate(b['Data de Envio']) || 0) - (formatDate(a['Data de Envio']) || 0)).map(item => `
-                    <tr><td class="py-1">${item['Data de Envio']}</td><td>${item.Produto}</td><td class="text-right">${item.Quantidade}</td></tr>`).join('')}</tbody>
+                    <tr><td class="py-1">${item['Data de Envio']}</td><td>${item['Produto']}</td><td class="text-right">${item.Quantidade}</td></tr>`).join('')}</tbody>
                 </table>
                 </div>`).join('')}</div>`;
         };
@@ -324,7 +324,6 @@
 
             try {
                 const fetchSheet = async (gid) => {
-                    // Removido o parâmetro de cache-busting para evitar possíveis bloqueios de rede
                     const url = `https://docs.google.com/spreadsheets/d/e/${SPREADSHEET_ID}/pub?output=csv&gid=${gid}`;
                     const response = await fetch(url, { cache: 'reload', mode: 'cors' });
                     if (!response.ok) throw new Error(`Falha ao carregar dados (GID: ${gid})`);
