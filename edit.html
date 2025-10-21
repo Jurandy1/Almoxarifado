@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoria e Edição - Sistema de Patrimônio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+    <!-- Dexie.js for IndexedDB Cache -->
+    <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Estilo CSS Externo -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="text-slate-700 antialiased">
+    <div id="auth-gate" class="hidden">
+
+        <header class="bg-white shadow-md sticky top-0 z-50">
+            <div class="container mx-auto p-4 flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Auditoria e Edição do Inventário</h1>
+                        <p id="feedback-status" class="text-sm font-semibold text-slate-600">Pronto para começar.</p>
+                    </div>
+                    <button id="force-refresh-btn" title="Forçar Atualização dos Dados" class="p-2 rounded-md hover:bg-slate-100 text-slate-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                            <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                        </svg>
+                    </button>
+                </div>
+                <div id="user-info-edit" class="text-right">
+                    <p id="user-email-edit" class="font-semibold"></p>
+                    <p class="text-xs text-green-600 font-bold">Modo de Edição Ativado</p>
+                    <button id="logout-btn" class="text-sm text-red-600 hover:underline">Sair</button>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Navegação por Abas -->
+        <nav class="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky z-40 top-[88px]">
+            <div class="container mx-auto px-4">
+                <div id="edit-nav" class="flex space-x-1 overflow-x-auto">
+                    <button class="nav-btn active" data-tab="edicao">✏️ Inventário Editável</button>
+                    <button class="nav-btn" data-tab="unidades">🔗 Ligar Unidades</button>
+                    <button class="nav-btn" data-tab="conciliar">🤝 Conciliar Itens</button>
+                    <button class="nav-btn" data-tab="sobrando">⚠️ Tombos Sobrando</button>
+                    <button class="nav-btn" data-tab="transferencias">🚨 Transferências</button>
+                    <button class="nav-btn" data-tab="importacao">🔄 Importação e Substituição</button>
+                    <button class="nav-btn" data-tab="notas_fiscais">📋 Notas Fiscais</button>
+                    <button class="nav-btn" data-tab="giap">📋 Planilha GIAP</button>
+                </div>
+            </div>
+        </nav>
+
+        <main class="container mx-auto p-4">
+            
+            <!-- ABA: Inventário Editável -->
+            <div id="content-edicao" class="fade-in">
+                 <div class="card">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div>
+                            <label for="edit-filter-tipo" class="block text-sm font-medium mb-1">Filtrar por Tipo</label>
+                            <select id="edit-filter-tipo" class="w-full p-2 border rounded-lg bg-white"></select>
+                        </div>
+                        <div>
+                            <label for="edit-filter-unidade" class="block text-sm font-medium mb-1">Filtrar por Unidade</label>
+                            <select id="edit-filter-unidade" class="w-full p-2 border rounded-lg bg-white"></select>
+                             <div class="flex justify-between items-center mt-1">
+                                <p id="unit-item-count" class="text-sm font-semibold text-slate-600"></p>
+                                <button type="button" id="add-item-to-unit-btn" class="hidden text-sm bg-green-100 text-green-700 px-3 py-1 rounded-md hover:bg-green-200">
+                                    + Adicionar Item
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="edit-filter-estado" class="block text-sm font-medium mb-1">Filtrar por Estado</label>
+                            <select id="edit-filter-estado" class="w-full p-2 border rounded-lg bg-white"></select>
+                        </div>
+                        <div>
+                            <label for="edit-filter-descricao" class="block text-sm font-medium mb-1">Buscar por Descrição</label>
+                            <input type="text" id="edit-filter-descricao" class="w-full p-2 border rounded-lg" placeholder="Digite para buscar...">
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button id="save-all-changes-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-slate-400 flex items-center gap-2" disabled>
+                            <span id="save-btn-spinner" class="hidden saving-spinner"></span>
+                            <span id="save-btn-text">Salvar Alterações</span>
+                        </button>
+                        <button id="delete-selected-btn" class="hidden bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center gap-2">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3h11V2h-11v1z"/></svg>
+                           Excluir Selecionados (<span id="delete-selected-count">0</span>)
+                        </button>
+                    </div>
+                </div>
+                <div class="card mt-6 p-0 overflow-hidden">
+                    <div class="table-container overflow-y-auto">
+                        <table class="w-full text-sm min-w-[1900px]">
+                            <thead class="bg-slate-100 sticky top-0">
+                                <tr>
+                                    <th class="p-3 text-left font-semibold w-12">
+                                        <input type="checkbox" id="select-all-checkbox" class="h-4 w-4 rounded border-gray-300">
+                                    </th>
+                                    <th class="p-3 text-left font-semibold">Ações</th>
+                                    <th class="p-3 text-left font-semibold">Tombamento</th>
+                                    <th class="p-3 text-left font-semibold">Opções</th>
+                                    <th class="p-3 text-left font-semibold">Descrição</th>
+                                    <th class="p-3 text-left font-semibold">Tipo</th>
+                                    <th class="p-3 text-left font-semibold">Unidade</th>
+                                    <th class="p-3 text-left font-semibold">Localização</th>
+                                    <th class="p-3 text-left font-semibold">Fornecedor (ou da Permuta)</th>
+                                    <th class="p-3 text-left font-semibold">NF</th>
+                                    <th class="p-3 text-left font-semibold">Origem da Doação</th>
+                                    <th class="p-3 text-left font-semibold">Estado</th>
+                                    <th class="p-3 text-left font-semibold">Quantidade</th>
+                                    <th class="p-3 text-left font-semibold">Observação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="edit-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA: Ligar Unidades -->
+            <div id="content-unidades" class="hidden fade-in">
+                <div class="card">
+                    <h2 class="text-xl font-bold text-slate-800 mb-2">Mapeamento de Unidades</h2>
+                    <p class="text-sm text-slate-600 mb-4">Ligue uma ou mais 'Unidades do Sistema' a uma ou mais 'Unidades da Planilha'. Use Ctrl/Shift+Click para múltiplas seleções.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="map-filter-tipo" class="block text-sm font-medium mb-1">Filtrar por Tipo (Sistema)</label>
+                            <select id="map-filter-tipo" class="w-full p-2 border rounded-lg bg-white mb-4"></select>
+                            <label for="map-system-unit-select" class="block text-sm font-medium mb-1">Unidade(s) do Sistema</label>
+                            <div class="select-container">
+                                <select id="map-system-unit-select" multiple></select>
+                            </div>
+                        </div>
+                        <div>
+                             <label for="map-giap-unit-multiselect" class="block text-sm font-medium mb-1">Unidade(s) da Planilha GIAP</label>
+                             <input type="text" id="map-giap-filter" class="w-full p-2 border rounded-lg my-2" placeholder="Pesquisar unidade da planilha...">
+                            <div class="select-container">
+                                <select id="map-giap-unit-multiselect" multiple></select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button id="save-mapping-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Salvar Ligação</button>
+                    </div>
+                    <div class="mt-6 border-t pt-4">
+                        <h3 class="font-bold text-slate-700 mb-2">Ligações Salvas</h3>
+                        <div id="saved-mappings-container" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ABA: Conciliar Itens -->
+            <div id="content-conciliar" class="hidden fade-in">
+                <div class="card">
+                    <div class="flex border-b mb-6">
+                        <button class="sub-nav-btn active" data-subtab-conciliar="conciliacao_unidade">Conciliação da Unidade</button>
+                        <button class="sub-nav-btn" data-subtab-conciliar="conciliacao_sobras">Conciliar com Sobras</button>
+                        <button class="sub-nav-btn" data-subtab-conciliar="itens_a_tombar">Itens S/T a Tombar</button>
+                    </div>
+                    
+                    <div id="subtab-conciliar-unidade">
+                        <h2 class="text-xl font-bold text-slate-800 mb-2">🤝 Conciliar Itens por Unidade</h2>
+                        <p class="text-sm text-slate-600 mb-4">Filtre por tipo e unidade, carregue os dados e depois clique em um item de cada lista para criar um vínculo.</p>
+                        <div class="flex flex-wrap items-end gap-2 mb-4">
+                            <div class="flex-grow">
+                                <label for="filter-tipo" class="text-sm font-medium">Tipo</label>
+                                <select id="filter-tipo" class="w-full border p-2 rounded-lg mt-1"></select>
+                            </div>
+                            <div class="flex-grow">
+                                <label for="filter-unidade" class="text-sm font-medium">Unidade</label>
+                                <select id="filter-unidade" class="w-full border p-2 rounded-lg mt-1" disabled></select>
+                            </div>
+                            <button id="load-conciliar" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                                Carregar
+                            </button>
+                        </div>
+                        <div id="unit-reconciled-warning" class="hidden my-4 p-3 text-sm font-semibold text-amber-800 bg-amber-100 border-l-4 border-amber-500 rounded-r-lg"></div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h3 class="font-semibold text-slate-800 mb-2">Itens sem Tombamento no Sistema</h3>
+                                <input type="text" id="system-list-filter" class="w-full p-2 border rounded-lg mb-2" placeholder="Filtrar por descrição...">
+                                <div id="system-list" class="reconciliation-container border p-2 space-y-2 rounded-lg bg-slate-50 overflow-y-auto"></div>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-slate-800 mb-2">Tombos Disponíveis (GIAP) para <span id="giap-list-unit-name" class="text-blue-600 font-bold"></span></h3>
+                                <input type="text" id="giap-list-filter" class="w-full p-2 border rounded-lg mb-2" placeholder="Filtrar por descrição...">
+                                <div id="giap-list" class="reconciliation-container border p-2 space-y-2 rounded-lg bg-slate-50 overflow-y-auto"></div>
+                            </div>
+                        </div>
+                        
+                        <div id="quick-actions" class="mt-6 border-t pt-4 hidden">
+                            <h3 class="font-semibold text-slate-800 mb-2">Vínculos Criados nesta Sessão</h3>
+                            <div id="created-links" class="space-y-2 mb-4 max-h-40 overflow-y-auto"></div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <button id="save-links" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Salvar Vínculos</button>
+                                <button id="clear-selections" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">Limpar Seleções</button>
+                                <button id="finish-reconciliation-btn" class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">Salvar e Ir para Sobras</button>
+                            </div>
+                        </div>
+                        
+                        <div id="giap-import-section" class="mt-6 border-t pt-4">
+                            <h3 class="font-semibold text-slate-800 mb-2">📥 Importar Tombos do GIAP para esta Unidade</h3>
+                            <p class="text-sm text-slate-600 mb-4">Selecione um ou mais itens da lista "Tombos Disponíveis" (sem selecionar um item da lista à esquerda) para importá-los diretamente como novos itens no sistema.</p>
+                            <div class="flex items-end gap-4">
+                                <div>
+                                    <label for="import-estado-select" class="block text-sm font-medium mb-1">Estado dos Itens a Importar</label>
+                                    <select id="import-estado-select" class="w-full p-2 border rounded-lg bg-white">
+                                        <option>Novo</option>
+                                        <option>Bom</option>
+                                        <option>Regular</option>
+                                        <option>Avariado</option>
+                                    </select>
+                                </div>
+                                <button id="import-giap-btn" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:bg-slate-400" disabled>Importar <span id="giap-import-count">0</span> Selecionados</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="subtab-conciliar-sobras" class="hidden">
+                        <h2 class="text-xl font-bold text-slate-800 mb-2">🤝 Conciliar com Itens Sobrando</h2>
+                        <p class="text-sm text-slate-600 mb-4">Aqui você pode vincular itens S/T de uma unidade específica com tombos que sobraram de qualquer outra unidade do inventário geral.</p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 border rounded-lg bg-slate-50">
+                            <div>
+                                <label for="sobras-filter-tipo" class="text-sm font-medium">Tipo da Unidade (Itens S/T)</label>
+                                <select id="sobras-filter-tipo" class="w-full border p-2 rounded-lg mt-1"></select>
+                            </div>
+                            <div>
+                                <label for="sobras-filter-unidade" class="text-sm font-medium">Unidade (Itens S/T)</label>
+                                <select id="sobras-filter-unidade" class="w-full border p-2 rounded-lg mt-1" disabled></select>
+                            </div>
+                            <div class="self-end">
+                                <button id="load-sobras-conciliar" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 w-full">Carregar Itens S/T</button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h3 class="font-semibold text-slate-800 mb-2">Itens sem Tombamento (Sistema)</h3>
+                                <input type="text" id="sobras-system-list-filter" class="w-full p-2 border rounded-lg mb-2" placeholder="Filtrar por descrição...">
+                                <div id="sobras-system-list" class="reconciliation-container border p-2 space-y-2 rounded-lg bg-slate-50 overflow-y-auto"></div>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-slate-800 mb-2">Tombos Sobrando (GIAP Geral)</h3>
+                                <div class="flex gap-2 mb-2">
+                                    <div class="flex-grow">
+                                         <label for="sobras-giap-type-filter" class="text-xs font-medium">Filtrar Sobras por Tipo</label>
+                                         <select id="sobras-giap-type-filter" class="w-full border p-2 rounded-lg mt-1 text-sm"></select>
+                                    </div>
+                                    <div class="flex-grow">
+                                        <label for="sobras-giap-list-filter" class="text-xs font-medium">Buscar na Descrição</label>
+                                        <input type="text" id="sobras-giap-list-filter" class="w-full p-2 border rounded-lg mt-1" placeholder="Filtrar por descrição...">
+                                    </div>
+                                </div>
+                                <div id="sobras-giap-list" class="reconciliation-container border p-2 space-y-2 rounded-lg bg-slate-50 overflow-y-auto"></div>
+                            </div>
+                        </div>
+
+                        <div id="sobras-quick-actions" class="mt-6 border-t pt-4 hidden">
+                            <h3 class="font-semibold text-slate-800 mb-2">Vínculos Criados nesta Sessão</h3>
+                            <div id="sobras-created-links" class="space-y-2 mb-4 max-h-40 overflow-y-auto"></div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <button id="sobras-save-links" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Salvar Vínculos</button>
+                                <button id="sobras-clear-selections" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">Limpar Seleções</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="subtab-conciliar-itens_a_tombar" class="hidden">
+                        <h2 class="text-xl font-bold text-slate-800 mb-2">Itens S/T com Novo Tombo (Aguardando Etiqueta)</h2>
+                        <p class="text-sm text-slate-600 mb-4">Esta é uma lista de controle de itens que eram S/T e foram conciliados. Após aplicar a etiqueta física com o novo número de tombo, confirme para remover o item da lista.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                             <div>
+                                <label for="tombar-filter-tipo" class="block text-sm font-medium mb-1">Filtrar por Tipo</label>
+                                <select id="tombar-filter-tipo" class="w-full p-2 border rounded-lg bg-white"></select>
+                            </div>
+                            <div>
+                                <label for="tombar-filter-unidade" class="block text-sm font-medium mb-1">Filtrar por Unidade</label>
+                                <select id="tombar-filter-unidade" class="w-full p-2 border rounded-lg bg-white" disabled></select>
+                            </div>
+                        </div>
+                        <div id="itens-a-tombar-container" class="mt-4"></div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- ABA: Tombos Sobrando -->
+            <div id="content-sobrando" class="hidden fade-in">
+                <div class="card">
+                     <h2 class="text-xl font-bold text-slate-800 mb-2">Tombamentos da Planilha Sem Vínculo</h2>
+                     <p class="text-sm text-slate-600 mb-4">Tombamentos da planilha que ainda não foram associados a nenhum item. Use os filtros para encontrar possíveis correspondências.</p>
+                      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <label for="leftover-keyword" class="block text-sm font-medium mb-1">Buscar por Descrição</label>
+                          <input type="text" id="leftover-keyword" class="w-full p-2 border rounded-lg" placeholder="Ex: Cadeira, mesa...">
+                        </div>
+                        <div>
+                          <label for="leftover-tombo" class="block text-sm font-medium mb-1">Filtrar por Tombamento</label>
+                          <input type="text" id="leftover-tombo" class="w-full p-2 border rounded-lg" placeholder="Ex: 14023...">
+                        </div>
+                        <div class="self-end">
+                          <button id="suggest-sobrando" class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Buscar Sobrando</button>
+                        </div>
+                      </div>
+                     <div class="mt-4 border-t pt-4">
+                        <h3 class="font-bold">Resultados (<span id="total-sobrando">0</span>)</h3>
+                        <div id="sobrando-list" class="reconciliation-container overflow-y-auto space-y-2 mt-2"></div>
+                     </div>
+                </div>
+            </div>
+
+            <!-- ABA: Transferências -->
+            <div id="content-transferencias" class="hidden fade-in">
+                <div class="card">
+                     <h2 class="text-xl font-bold text-slate-800 mb-2">Transferências Pendentes</h2>
+                     <p class="text-sm text-slate-600 mb-4">Itens agrupados por unidade de origem. Clique em uma unidade para expandir e ver os itens que precisam ser transferidos.</p>
+                     <div id="pending-transfers-container" class="mt-4 space-y-2"></div>
+                </div>
+            </div>
+            
+            <!-- ABA: Importação e Substituição -->
+            <div id="content-importacao" class="hidden fade-in">
+                <div class="card">
+                    <div class="flex border-b mb-6">
+                        <button class="sub-nav-btn active" data-subtab="substituir">Substituir Inventário</button>
+                        <button class="sub-nav-btn" data-subtab="edit-by-desc">Editar por Descrição</button> <!-- NOVA FERRAMENTA -->
+                        <button class="sub-nav-btn" data-subtab="massa">Importar por Tombamento</button>
+                        <button class="sub-nav-btn" data-subtab="add_giap">Adicionar Unidade GIAP</button>
+                    </div>
+            
+                    <!-- Sub-Aba: Substituir Inventário -->
+                    <div id="subtab-content-substituir">
+                        <h2 class="text-xl font-bold text-slate-800 mb-2">Substituir Inventário da Unidade por Planilha</h2>
+                        <p class="text-sm text-slate-600 mb-4">Esta ferramenta <strong class="text-red-600">APAGARÁ</strong> todos os itens da unidade selecionada e os substituirá pelos dados colados abaixo. Use com muito cuidado.</p>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label for="replace-tipo" class="block text-sm font-medium mb-1">Tipo de Unidade de Destino</label>
+                                <select id="replace-tipo" class="w-full p-2 border rounded-lg bg-white"></select>
+                            </div>
+                            <div>
+                                <label for="replace-unit" class="block text-sm font-medium mb-1">Unidade de Destino (a ser substituída)</label>
+                                <select id="replace-unit" class="w-full p-2 border rounded-lg bg-white" disabled></select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="replace-data" class="block text-sm font-medium mb-1">Cole os dados do Excel aqui</label>
+                            <p class="text-xs text-slate-500 mb-2">As colunas devem estar na ordem: UNIDADE, ITEM, TOMBO, LOCAL, ESTADO DE CONSERVAÇÃO</p>
+                            <textarea id="replace-data" rows="8" class="w-full p-2 border rounded-lg font-mono text-xs" placeholder="Copie as colunas do Excel e cole aqui..."></textarea>
+                        </div>
+                        <button id="preview-replace-btn" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Visualizar Dados</button>
+
+                        <div id="replace-results" class="hidden mt-6 border-t pt-4">
+                            <h3 class="font-bold text-slate-700 mb-2">Pré-visualização dos Itens a Serem Criados (<span id="replace-preview-count">0</span>)</h3>
+                            <div id="replace-preview-list" class="reconciliation-container overflow-y-auto space-y-2 p-2 bg-slate-50 border rounded-lg"></div>
+                            <div class="mt-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg">
+                                <div class="flex items-start">
+                                    <input type="checkbox" id="replace-confirm-checkbox" class="mt-1 h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
+                                    <label for="replace-confirm-checkbox" class="ml-3 block text-sm font-medium text-red-800">
+                                        Eu entendo que <strong class="font-bold">TODOS OS ITENS</strong> da unidade selecionada serão <strong class="font-bold">PERMANENTEMENTE APAGADOS</strong> e substituídos por esta nova lista.
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <button id="confirm-replace-btn" class="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 disabled:bg-slate-400" disabled>Confirmar e Substituir Inventário</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- INÍCIO: Nova Sub-Aba: Editar por Descrição -->
+                    <div id="subtab-content-edit-by-desc" class="hidden">
+                        <h2 class="text-xl font-bold text-slate-800 mb-2">Editar Tombamentos por Descrição (com Lógica Aprimorada)</h2>
+                        <p class="text-sm text-slate-600 mb-4">
+                            Esta ferramenta inteligente atualiza itens existentes em uma unidade. Ela localiza os itens por <strong class="text-blue-600">Descrição similar</strong> e outros campos, depois atualiza Tombamento, Localização e Estado.
+                        </p>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label for="edit-by-desc-tipo" class="block text-sm font-medium mb-1">Tipo de Unidade de Destino</label>
+                                <select id="edit-by-desc-tipo" class="w-full p-2 border rounded-lg bg-white"></select>
+                            </div>
+                            <div>
+                                <label for="edit-by-desc-unit" class="block text-sm font-medium mb-1">Unidade de Destino (a ser atualizada)</label>
+                                <select id="edit-by-desc-unit" class="w-full p-2 border rounded-lg bg-white" disabled></select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="edit-by-desc-data" class="block text-sm font-medium mb-1">Cole os dados do Excel aqui (com cabeçalho)</label>
+                            <p class="text-xs text-slate-500 mb-2">
+                                O sistema identificará as colunas pelos cabeçalhos: <strong>ITEM (ou Descrição)</strong>, <strong>TOMBO (ou Tombamento)</strong>, <strong>LOCAL (ou Localização)</strong>, <strong>ESTADO DE CONSERVAÇÃO (ou Estado)</strong>.
+                            </p>
+                            <textarea id="edit-by-desc-data" rows="8" class="w-full p-2 border rounded-lg font-mono text-xs" placeholder="Copie as colunas do Excel, incluindo o cabeçalho, e cole aqui..."></textarea>
+                        </div>
+                        <button id="preview-edit-by-desc-btn" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Visualizar Dados para Atualização</button>
+
+                        <div id="edit-by-desc-results" class="hidden mt-6 border-t pt-4">
+                             <h3 class="font-bold text-slate-700 mb-2">Pré-visualização das Atualizações (<span id="edit-by-desc-preview-count">0</span> itens)</h3>
+                             <p class="text-sm text-slate-600 mb-4">Revise as alterações. Itens em <span class="text-yellow-600 font-semibold">amarelo</span> não foram encontrados ou a correspondência é ambígua. Itens em <span class="text-red-600 font-semibold">vermelho</span> possuem um tombamento que já está em uso por outro item. Itens em <span class="text-orange-600 font-semibold">laranja</span> possuem um tombo que pertence a outra unidade no GIAP.</p>
+                            <div id="edit-by-desc-preview-table-container" class="reconciliation-container overflow-y-auto space-y-2 p-2 bg-slate-50 border rounded-lg">
+                                <!-- A tabela de pré-visualização será inserida aqui -->
+                            </div>
+                             <div class="mt-4">
+                                <button id="confirm-edit-by-desc-btn" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 disabled:bg-slate-400">Confirmar e Atualizar Itens</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- FIM: Nova Sub-Aba -->
+
+                    <!-- Sub-Aba: Importar em Massa (funcionalidade antiga) -->
+                    <div id="subtab-content-massa" class="hidden">
+                         <h2 class="text-xl font-bold text-slate-800 mb-2">Importar Itens por Tombamento (GIAP)</h2>
+                         <p class="text-sm text-slate-600 mb-4">Cole uma lista de tombamentos, escolha a unidade de destino e o sistema criará os itens baseado nos dados da planilha GIAP.</p>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="mass-transfer-tombos" class="block text-sm font-medium mb-1">Números de Tombamento (separados por vírgula)</label>
+                                <textarea id="mass-transfer-tombos" rows="4" class="w-full p-2 border rounded-lg" placeholder="140230, 14233, 12345..."></textarea>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="mass-transfer-tipo" class="block text-sm font-medium mb-1">Tipo de Unidade de Destino</label>
+                                    <select id="mass-transfer-tipo" class="w-full p-2 border rounded-lg bg-white"></select>
+                                </div>
+                                <div>
+                                    <label for="mass-transfer-unit" class="block text-sm font-medium mb-1">Unidade de Destino</label>
+                                    <select id="mass-transfer-unit" class="w-full p-2 border rounded-lg bg-white" disabled></select>
+                                </div>
+                            </div>
+                            <button id="mass-transfer-search-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Buscar Tombamentos</button>
+                        </div>
+                        <div id="mass-transfer-results" class="hidden mt-6 border-t pt-4">
+                            <h3 class="font-bold text-slate-700 mb-2">Itens a serem criados</h3>
+                            <div class="flex items-center gap-4 mb-4">
+                                 <label for="mass-transfer-set-all-status" class="block text-sm font-medium">Definir Estado para Todos:</label>
+                                 <select id="mass-transfer-set-all-status" class="p-2 border rounded-lg bg-white">
+                                    <option>Novo</option>
+                                    <option>Bom</option>
+                                    <option>Regular</option>
+                                    <option>Avariado</option>
+                                 </select>
+                            </div>
+                            <div id="mass-transfer-list" class="space-y-2"></div>
+                            <div class="mt-6">
+                                <button id="mass-transfer-confirm-btn" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700">Confirmar Criação em Massa</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sub-Aba: Adicionar Unidade GIAP -->
+                     <div id="subtab-content-add_giap" class="hidden">
+                        <h2 class="text-xl font-bold text-slate-800 mb-2">Adicionar Nova Unidade (Padrão GIAP)</h2>
+                        <p class="text-sm text-slate-600 mb-4">Adicione aqui uma nova unidade que ainda não existe na planilha GIAP. Ela ficará disponível na aba "Ligar Unidades".</p>
+                        <div class="space-y-4 max-w-md">
+                            <div>
+                                <label for="add-giap-number" class="block text-sm font-medium mb-1">Número da Unidade (opcional)</label>
+                                <input type="text" id="add-giap-number" class="w-full p-2 border rounded-lg" placeholder="Ex: 140.3">
+                            </div>
+                            <div>
+                                <label for="add-giap-name" class="block text-sm font-medium mb-1">Nome da Nova Unidade</label>
+                                <input type="text" id="add-giap-name" class="w-full p-2 border rounded-lg" placeholder="Ex: CRAS VILA ESPERANÇA (NOVO)" required>
+                            </div>
+                            <button id="save-giap-unit-btn" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Salvar Nova Unidade</button>
+                        </div>
+                     </div>
+                </div>
+            </div>
+
+            <!-- ABA: Notas Fiscais -->
+            <div id="content-notas_fiscais" class="hidden fade-in">
+                <div class="card">
+                    <h2 class="text-xl font-bold text-slate-800 mb-2">📋 Notas Fiscais</h2>
+                    <p class="text-sm text-slate-600 mb-4">Lista de notas fiscais da Planilha, com status de disponibilidade e localização dos itens no inventário.</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 pb-4 border-b">
+                        <div>
+                            <label for="nf-search" class="block text-sm font-medium mb-1">Pesquisar por Nº da NF</label>
+                            <input type="text" id="nf-search" placeholder="Digite o número..." class="w-full p-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label for="nf-item-search" class="block text-sm font-medium mb-1">Pesquisar por Item</label>
+                            <input type="text" id="nf-item-search" placeholder="Digite o nome do item..." class="w-full p-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label for="nf-fornecedor-search" class="block text-sm font-medium mb-1">Pesquisar por Fornecedor</label>
+                            <input type="text" id="nf-fornecedor-search" placeholder="Digite o nome do fornecedor..." class="w-full p-2 border rounded-lg">
+                        </div>
+                         <div>
+                            <label for="nf-tipo-entrada" class="block text-sm font-medium mb-1">Tipo de Entrada</label>
+                            <select id="nf-tipo-entrada" class="w-full p-2 border rounded-lg bg-white">
+                                <option value="">Todas</option>
+                                <option value="Compra">Compra</option>
+                                <option value="Doação">Doação</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="nf-status-filter" class="block text-sm font-medium mb-1">Status do Item</label>
+                            <select id="nf-status-filter" class="w-full p-2 border rounded-lg bg-white">
+                                <option value="">Todos os Status</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="nf-date-start" class="block text-sm font-medium mb-1">Data de Início (Cadastro)</label>
+                            <input type="date" id="nf-date-start" class="w-full p-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label for="nf-date-end" class="block text-sm font-medium mb-1">Data de Fim (Cadastro)</label>
+                            <input type="date" id="nf-date-end" class="w-full p-2 border rounded-lg">
+                        </div>
+                         <div class="md:col-span-4">
+                            <button id="clear-nf-filters-btn" class="w-full md:w-auto bg-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-300">Limpar Filtros</button>
+                        </div>
+                    </div>
+
+                    <div id="notas-fiscais-container" class="mt-4"></div>
+                </div>
+            </div>
+
+
+            <!-- ABA: Planilha GIAP -->
+            <div id="content-giap" class="hidden fade-in">
+                <div class="card p-0 overflow-hidden">
+                    <div class="table-container overflow-y-auto">
+                        <table class="w-full text-sm min-w-[1800px]">
+                            <thead class="bg-slate-100 sticky top-0">
+                                <tr>
+                                    <!-- Headers will be populated by JS -->
+                                </tr>
+                            </thead>
+                            <tbody id="giap-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Modals -->
+    <div id="sync-confirm-modal" class="modal fixed inset-0 z-[60] flex items-center justify-center p-4 hidden">
+        <div class="modal-overlay absolute inset-0 bg-black/60"></div>
+        <div class="modal-container bg-white w-full max-w-lg rounded-lg shadow-2xl flex flex-col transform scale-95">
+             <div class="p-4 border-b">
+                <h3 class="text-xl font-semibold">Confirmar Sincronização</h3>
+             </div>
+             <div class="p-6 space-y-4">
+                <p>O item <strong id="sync-item-tombo" class="font-mono"></strong> foi encontrado na planilha GIAP. Deseja atualizar a descrição?</p>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Descrição Atual no Sistema:</p>
+                    <p id="sync-current-desc" class="p-2 bg-gray-100 rounded-md text-sm"></p>
+                </div>
+                 <div>
+                    <p class="text-sm font-medium text-green-700">Nova Descrição da Planilha:</p>
+                    <p id="sync-new-desc" class="p-2 bg-green-50 rounded-md text-sm font-semibold"></p>
+                </div>
+                <p class="text-sm text-slate-600">Os campos "Fornecedor" e "NF" serão atualizados em ambos os casos.</p>
+             </div>
+             <div class="flex justify-end p-4 border-t bg-slate-50 rounded-b-lg space-x-2">
+                <button type="button" id="sync-cancel-btn" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button type="button" id="sync-keep-desc-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">Manter Descrição Atual</button>
+                <button type="button" id="sync-update-all-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Sim, Atualizar Tudo</button>
+             </div>
+        </div>
+    </div>
+
+    <div id="add-item-modal" class="modal fixed inset-0 z-[60] flex items-center justify-center p-4 hidden">
+        <div class="modal-overlay absolute inset-0 bg-black/60"></div>
+        <div class="modal-container bg-white w-full max-w-lg rounded-lg shadow-2xl flex flex-col transform scale-95">
+            <form id="add-item-form">
+                <div class="flex items-center justify-between p-4 border-b">
+                    <h3 id="add-modal-title" class="text-xl font-semibold">Adicionar Novo Item</h3>
+                    <button type="button" class="p-2 rounded-full hover:bg-slate-200 js-close-modal-add">&times;</button>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label for="add-item-unidade" class="block text-sm font-medium mb-1">Unidade</label>
+                        <input type="text" id="add-item-unidade" class="w-full p-2 border rounded-lg bg-slate-100" readonly>
+                    </div>
+                    <div>
+                        <label for="add-item-tipo" class="block text-sm font-medium mb-1">Tipo</label>
+                        <input type="text" id="add-item-tipo" class="w-full p-2 border rounded-lg bg-slate-100" readonly>
+                    </div>
+                    <hr>
+                    <div>
+                        <label for="add-item-tombamento" class="block text-sm font-medium mb-1">Tombamento</label>
+                        <input type="text" id="add-item-tombamento" class="w-full p-2 border rounded-lg" placeholder="Nº de tombamento ou S/T">
+                    </div>
+                    <div>
+                        <label for="add-item-descricao" class="block text-sm font-medium mb-1">Descrição</label>
+                        <input type="text" id="add-item-descricao" class="w-full p-2 border rounded-lg" placeholder="Ex: Cadeira giratória" required>
+                    </div>
+                    <div>
+                        <label for="add-item-estado" class="block text-sm font-medium mb-1">Estado de Conservação</label>
+                        <select id="add-item-estado" class="w-full p-2 border rounded-lg bg-white" required>
+                            <option>Novo</option>
+                            <option>Bom</option>
+                            <option>Regular</option>
+                            <option>Avariado</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex justify-end p-4 border-t bg-slate-50 rounded-b-lg space-x-2">
+                    <button type="button" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 js-close-modal-add">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Salvar Item</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE ESCOLHA DE DESCRIÇÃO - NOVO -->
+    <div id="desc-choice-modal" class="modal fixed inset-0 z-[70] flex items-center justify-center p-4 hidden">
+        <div class="modal-overlay absolute inset-0 bg-black/60"></div>
+        <div class="modal-container bg-white w-full max-w-lg rounded-lg shadow-2xl flex flex-col transform scale-95">
+             <div class="p-4 border-b">
+                <h3 class="text-xl font-semibold">Escolha a Descrição do Item</h3>
+             </div>
+             <div class="p-6 space-y-4">
+                <p>Qual descrição você prefere para o item <strong id="desc-choice-tombo" class="font-mono"></strong>?</p>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Descrição Atual no Sistema:</p>
+                    <p id="desc-choice-current" class="p-2 bg-gray-100 rounded-md text-sm"></p>
+                </div>
+                 <div>
+                    <p class="text-sm font-medium text-blue-700">Nova Descrição da Planilha GIAP:</p>
+                    <p id="desc-choice-new" class="p-2 bg-blue-50 rounded-md text-sm font-semibold"></p>
+                </div>
+             </div>
+             <div class="flex justify-end p-4 border-t bg-slate-50 rounded-b-lg space-x-2">
+                <button type="button" id="desc-choice-cancel-btn" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button type="button" id="desc-choice-keep-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">Manter Descrição Atual</button>
+                <button type="button" id="desc-choice-update-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Usar Descrição da Planilha</button>
+             </div>
+        </div>
+    </div>
+    
+    <!-- MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (NOVO) -->
+    <div id="delete-confirm-modal-edit" class="modal fixed inset-0 z-[70] flex items-center justify-center p-4 hidden">
+        <div class="modal-overlay absolute inset-0 bg-black/60"></div>
+        <div class="modal-container bg-white w-full max-w-md rounded-lg shadow-2xl flex flex-col transform scale-95">
+            <div class="p-6 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-4 text-red-500 w-14 h-14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <h3 id="delete-modal-title" class="mb-5 text-lg font-normal text-gray-600">Tem certeza que deseja excluir?</h3>
+                <p id="delete-item-info-edit" class="mb-5 text-sm font-bold text-gray-800"></p>
+                <button id="confirm-delete-btn-edit" type="button" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 mr-2">Sim, excluir</button>
+                <button type="button" class="js-close-modal-delete bg-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full Page Overlay for saving -->
+    <div id="full-page-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+        <div class="text-center text-white">
+            <div class="w-16 h-16 border-8 border-dashed rounded-full animate-spin border-white mx-auto"></div>
+            <p id="overlay-message" class="mt-4 text-lg font-semibold">Salvando... Recarregando...</p>
+        </div>
+    </div>
+
+    <div id="loading-or-error-screen" class="flex items-center justify-center h-screen">
+        <div class="text-center"><div class="w-16 h-16 border-8 border-dashed rounded-full animate-spin border-blue-600 mx-auto"></div><p class="mt-4 text-slate-600">Carregando e analisando dados...</p></div>
+    </div>
+
+    <!-- Script da Página (Módulo) -->
+    <script type="module" src="edit.js"></script>
+</body>
+</html>
