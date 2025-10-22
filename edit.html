@@ -16,13 +16,26 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="text-slate-700 antialiased">
-    <!-- Tela de Carregamento/Erro (Movida para fora do #auth-gate) -->
+    <!-- Tela de Carregamento/Erro -->
     <div id="loading-or-error-screen" class="flex items-center justify-center h-screen">
         <div class="text-center"><div class="w-16 h-16 border-8 border-dashed rounded-full animate-spin border-blue-600 mx-auto"></div><p class="mt-4 text-slate-600">Carregando e analisando dados...</p></div>
     </div>
 
+    <!-- 
+      NOVA Tela de Acesso Negado (Auth Gate)
+      Movida para ser um overlay, assim como a tela de loading,
+      em vez de envolver a aplicação inteira.
+    -->
     <div id="auth-gate" class="hidden">
+        <!-- O conteúdo desta div será preenchido pelo edit.js com a mensagem de "Acesso Negado" -->
+    </div>
 
+    <!-- 
+      NOVO Wrapper da Aplicação
+      Este div agora envolve a aplicação e começará escondido (hidden).
+      O edit.js irá mostrá-lo *após* o login ser confirmado.
+    -->
+    <div id="app-wrapper" class="hidden">
         <header class="bg-white shadow-md sticky top-0 z-50">
             <div class="container mx-auto p-4 flex justify-between items-center">
                 <div class="flex items-center gap-4">
@@ -59,10 +72,7 @@
         <main class="container mx-auto p-4">
             
             <!-- 
-              ABA: Inventário Editável (Substituída) 
-              O conteúdo abaixo é do 'edit_ULTRA_OTIMIZADO.html'.
-              O ID foi mantido como 'content-edicao' para corresponder à navegação.
-              A classe 'hidden' foi removida e 'fade-in' mantida.
+              ABA: Inventário Editável
             -->
             <div id="content-edicao" class="tab-content fade-in">
                 <div class="card">
@@ -608,7 +618,7 @@
                 </div>
             </div>
         </main>
-    </div>
+    </div> <!-- Fim do #app-wrapper -->
     
     <!-- Modais -->
     <!-- Modal de Sincronização (Antigo, não mais usado pela nova aba) -->
