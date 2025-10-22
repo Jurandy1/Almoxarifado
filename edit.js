@@ -37,6 +37,7 @@ let currentDeleteItemIds = []; // Usado pela aba otimizada
 // --- ESTADO DE INICIALIZAÇÃO ---
 let dataLoaded = false; // Flag para indicar que os dados principais foram carregados
 const initializedTabs = new Set(); // Conjunto para rastrear abas já inicializadas
+const loadedNfDetails = new Set(); // NOVO: Para rastrear detalhes de NF carregados
 
 // --- CONFIGURAÇÕES DE PERFORMANCE (Aba Otimizada) ---
 const ITEMS_PER_PAGE_DEFAULT = 50;
@@ -61,6 +62,8 @@ const domCache = {
     nextPageBtn: null,
     paginationControls: null,
     filterWarning: null,
+    editFilterTipo: null, // NOVO: Cache dos filtros
+    editFilterUnidade: null, // NOVO: Cache dos filtros
     // Gerais
     loadingScreen: null,
     authGate: null, // Agora é o overlay de "Acesso Negado"
@@ -68,7 +71,8 @@ const domCache = {
     feedbackStatus: null,
     navButtons: null,
     contentPanes: null,
-    userEmailEdit: null
+    userEmailEdit: null,
+    nfContainer: null // NOVO: Cache container NF
 };
 
 function initDomElements() {
@@ -80,6 +84,8 @@ function initDomElements() {
     domCache.nextPageBtn = document.getElementById('edit-next-page');
     domCache.paginationControls = document.getElementById('pagination-controls');
     domCache.filterWarning = document.getElementById('filter-warning');
+    domCache.editFilterTipo = document.getElementById('edit-filter-tipo'); // NOVO
+    domCache.editFilterUnidade = document.getElementById('edit-filter-unidade'); // NOVO
     // Gerais
     domCache.loadingScreen = document.getElementById('loading-or-error-screen');
     domCache.authGate = document.getElementById('auth-gate'); // Div de overlay "Acesso Negado"
@@ -88,6 +94,7 @@ function initDomElements() {
     domCache.navButtons = document.querySelectorAll('#edit-nav .nav-btn');
     domCache.contentPanes = document.querySelectorAll('main > div[id^="content-"]');
     domCache.userEmailEdit = document.getElementById('user-email-edit');
+    domCache.nfContainer = document.getElementById('notas-fiscais-container'); // NOVO
 
     console.log("DOM elements cached.");
 }
@@ -559,18 +566,70 @@ function initializeTabContent(tabName) {
 
 // --- FUNÇÕES DE INICIALIZAÇÃO POR ABA ---
 
+// **NOVO:** Função auxiliar para atualizar o filtro de unidade
+function updateUnidadeFilterOptions() {
+    if (!domCache.editFilterTipo || !domCache.editFilterUnidade) return;
+
+    const selectedTipo = domCache.editFilterTipo.value;
+    // Guarda a unidade selecionada atualmente, se houver
+    const currentSelectedUnidade = domCache.editFilterUnidade.value;
+
+    let unidadesOptions = ['<option value="">Todas as Unidades</option>']; // Começa com "Todas"
+
+    if (selectedTipo) {
+        // Se um tipo foi selecionado, filtra as unidades
+        const unidadesDoTipo = [...new Set((fullInventory || [])
+            .filter(i => i.Tipo === selectedTipo)
+            .map(i => i.Unidade))]
+            .filter(Boolean)
+            .sort();
+        unidadesOptions.push(...unidadesDoTipo.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`));
+        domCache.editFilterUnidade.disabled = false;
+    } else {
+        // Se nenhum tipo foi selecionado, mostra todas as unidades
+        const todasUnidades = [...new Set((fullInventory || []).map(i => i.Unidade))]
+            .filter(Boolean)
+            .sort();
+        unidadesOptions.push(...todasUnidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`));
+        domCache.editFilterUnidade.disabled = false; // Mantém habilitado para selecionar qualquer unidade
+    }
+
+    domCache.editFilterUnidade.innerHTML = unidadesOptions.join('');
+
+    // Tenta restaurar a seleção anterior, se ela ainda for válida para o tipo atual
+    if (domCache.editFilterUnidade.querySelector(`option[value="${currentSelectedUnidade}"]`)) {
+        domCache.editFilterUnidade.value = currentSelectedUnidade;
+    } else {
+        domCache.editFilterUnidade.value = ""; // Reseta para "Todas" se a anterior não for válida
+    }
+}
+
+
 function initEditableInventoryTab() {
     console.log("Initializing Editable Inventory Tab"); // LOG ADICIONAL
     // Popula os filtros da aba editável
     const tipos = [...new Set((fullInventory || []).map(i => i.Tipo))].filter(Boolean).sort(); // Fallback
-    const unidades = [...new Set((fullInventory || []).map(i => i.Unidade))].filter(Boolean).sort(); // Fallback
-    const tipoSelect = document.getElementById('edit-filter-tipo');
-    const unidadeSelect = document.getElementById('edit-filter-unidade');
-    if (tipoSelect) tipoSelect.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
-    if (unidadeSelect) unidadeSelect.innerHTML = '<option value="">Todas as Unidades</option>' + unidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+
+    // Popula o filtro de Tipo
+    if (domCache.editFilterTipo) {
+        domCache.editFilterTipo.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+    }
+
+    // Popula o filtro de Unidade inicialmente (com todas) e adiciona o listener
+    updateUnidadeFilterOptions(); // Chama a nova função para popular inicialmente
+    if (domCache.editFilterTipo) {
+        // Adiciona listener para ATUALIZAR as unidades quando o TIPO mudar
+        domCache.editFilterTipo.addEventListener('change', () => {
+             console.log("Filtro de tipo alterado."); // LOG ADICIONAL
+            updateUnidadeFilterOptions();
+            // Dispara o filtro principal após atualizar as unidades
+            applyFiltersAndPaginate();
+        });
+    }
+
 
     // Aplica filtros/paginação iniciais e configura eventos
-    applyFiltersAndPaginate();
+    applyFiltersAndPaginate(); // Chama para renderizar a tabela inicial
     setupEventDelegation(); // Configura os listeners otimizados
 }
 
@@ -680,15 +739,20 @@ function initNfTab() {
     console.log("Initializing NF Tab");
     populateNfTab(); // Chama a função original
     // Adiciona listeners específicos
-    const debouncedRenderNf = debounce(renderNfList, 300);
+    const debouncedRenderNf = debounce(renderNfList, 300); // Já estava debounce
     document.getElementById('nf-search')?.addEventListener('input', debouncedRenderNf);
     document.getElementById('nf-item-search')?.addEventListener('input', debouncedRenderNf);
     document.getElementById('nf-fornecedor-search')?.addEventListener('input', debouncedRenderNf);
+    // Para selects e datas, o debounce não é tão necessário, mas o lazy load vai ajudar mais
     document.getElementById('nf-tipo-entrada')?.addEventListener('change', renderNfList);
     document.getElementById('nf-status-filter')?.addEventListener('change', renderNfList);
     document.getElementById('nf-date-start')?.addEventListener('change', renderNfList);
     document.getElementById('nf-date-end')?.addEventListener('change', renderNfList);
     document.getElementById('clear-nf-filters-btn')?.addEventListener('click', handleClearNfFilters);
+
+    // **NOVO**: Listener delegado para lazy loading dos detalhes
+    domCache.nfContainer?.addEventListener('toggle', handleNfDetailsToggle, true); // Usa 'toggle' e captura
+
 }
 
 function initGiapTab() {
@@ -705,8 +769,8 @@ function initGiapTab() {
 // --- LÓGICA ADAPTATIVA DE FILTROS ---
 function applyFiltersAndPaginate() {
     // Adiciona verificação se os elementos existem
-    const tipoEl = document.getElementById('edit-filter-tipo');
-    const unidadeEl = document.getElementById('edit-filter-unidade');
+    const tipoEl = domCache.editFilterTipo; // Usa cache
+    const unidadeEl = domCache.editFilterUnidade; // Usa cache
     const estadoEl = document.getElementById('edit-filter-estado');
     const descricaoEl = document.getElementById('edit-filter-descricao');
 
@@ -807,14 +871,25 @@ function renderEditableTable() {
             const giapItem = giapMap.get(normalizeTombo(itemData.Tombamento));
             const hasGiap = !!giapItem;
             const tomboReadonly = hasGiap ? 'readonly title="Vinculado ao GIAP"' : '';
+            const tomboValue = escapeHtml(itemData.Tombamento || '');
 
             tr.innerHTML = `
                 <td class="px-2 py-1 text-xs whitespace-nowrap">${escapeHtml(itemData.Tipo || '')}</td>
                 <td class="px-2 py-1 text-xs whitespace-nowrap">${escapeHtml(itemData.Unidade || '')}</td>
-                <td class="px-2 py-1 text-xs">
+                <td class="px-2 py-1 text-xs relative"> <!-- Adicionado relative -->
                     <input type="text" class="w-full p-1 border rounded text-xs editable-field"
                            data-field="Tombamento" data-id="${item.id}"
-                           value="${escapeHtml(itemData.Tombamento || '')}" ${tomboReadonly}>
+                           value="${tomboValue}" ${tomboReadonly}>
+                    <!-- NOVO Botão Sync -->
+                    ${!hasGiap ? `
+                    <button class="absolute right-1 top-1/2 transform -translate-y-1/2 p-0.5 text-blue-500 hover:text-blue-700 sync-tombo-btn"
+                            data-sync-id="${item.id}" title="Buscar dados do GIAP para este tombo">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="pointer-events-none" viewBox="0 0 16 16">
+                          <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                          <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466zM12.5 10a.5.5 0 0 1-.5.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 1 .5.5m-5-2.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m-5 5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5"/>
+                        </svg>
+                    </button>
+                    ` : ''}
                 </td>
                 <td class="px-2 py-1 text-xs" style="min-width: 200px;">
                     <input type="text" class="w-full p-1 border rounded text-xs editable-field"
@@ -864,8 +939,10 @@ function renderEditableTable() {
 
     // Limpar e inserir de uma vez (super rápido)
     requestAnimationFrame(() => {
-        domCache.editTableBody.innerHTML = '';
-        domCache.editTableBody.appendChild(fragment);
+        if (domCache.editTableBody) { // Checa se ainda existe (pode ter mudado de aba)
+             domCache.editTableBody.innerHTML = '';
+             domCache.editTableBody.appendChild(fragment);
+        }
     });
 
 
@@ -938,59 +1015,131 @@ function handleTableInput(e) {
     const item = fullInventory.find(i => i.id === itemId);
     if (!item) return;
 
-    const currentItemState = dirtyItems.get(itemId) || item;
+    // Obtém o estado atual (seja o original ou já modificado)
+    const currentItemState = dirtyItems.get(itemId) || { ...item }; // Cria cópia se não estiver sujo
 
-    // Verifica se houve mudança real (comparando com o estado atual, seja original ou já modificado)
-    // Converte para string para comparação mais robusta (evita problemas com tipos numéricos vs string)
-    const currentValueStr = (currentItemState[fieldName] === null || currentItemState[fieldName] === undefined) ? '' : String(currentItemState[fieldName]);
+    // Verifica se houve mudança real
+    const currentValueStr = (item[fieldName] === null || item[fieldName] === undefined) ? '' : String(item[fieldName]);
     const newValueStr = (newValue === null || newValue === undefined) ? '' : String(newValue);
 
-    if (currentValueStr !== newValueStr) {
+    // Atualiza o estado sujo APENAS se o novo valor for DIFERENTE do ORIGINAL
+    if (newValueStr !== currentValueStr) {
         const updatedItem = { ...currentItemState, [fieldName]: newValue };
         dirtyItems.set(itemId, updatedItem);
         field.closest('tr').classList.add('edited-row');
-        updatePaginationControls();
-         console.log(`Item ${itemId} marked dirty. Field: ${fieldName}, New Value: ${newValue}`);
+        console.log(`Item ${itemId} marked dirty. Field: ${fieldName}, New Value: '${newValue}' (Original: '${currentValueStr}')`);
     } else {
-        // Se voltou ao valor original REAL do inventário, remove do dirty
-        const originalItem = fullInventory.find(i => i.id === itemId);
-        const originalValueStr = (originalItem[fieldName] === null || originalItem[fieldName] === undefined) ? '' : String(originalItem[fieldName]);
+        // Se voltou ao valor ORIGINAL, remove a sujeira DESSE campo
+        if (dirtyItems.has(itemId)) {
+             const dirtyData = dirtyItems.get(itemId);
+             // Remove o campo do objeto sujo
+             delete dirtyData[fieldName];
+             // Verifica se ainda há outros campos sujos
+             const originalItem = fullInventory.find(i => i.id === itemId);
+             const otherDirtyFieldsExist = Object.keys(dirtyData).some(key =>
+                 key !== 'id' && // Ignora id
+                 String(dirtyData[key]) !== ((originalItem[key] === null || originalItem[key] === undefined) ? '' : String(originalItem[key]))
+             );
 
-        if (newValueStr === originalValueStr) {
-            // Verifica se há outras alterações pendentes para este item
-            const otherChangesExist = Object.keys(dirtyItems.get(itemId) || {}).some(key =>
-                key !== fieldName && key !== 'id' && // Ignora o próprio campo e o id
-                String(dirtyItems.get(itemId)[key]) !== String(originalItem[key])
-            );
-
-            if (!otherChangesExist) {
-                dirtyItems.delete(itemId);
-                field.closest('tr').classList.remove('edited-row');
-                 console.log(`Item ${itemId} reverted to original state and removed from dirty list.`);
-            } else {
-                // Remove apenas a alteração deste campo do objeto 'dirty'
-                 const currentDirty = dirtyItems.get(itemId);
-                 delete currentDirty[fieldName]; // Remove a chave se voltou ao original
-                 dirtyItems.set(itemId, currentDirty); // Atualiza o map
+             if (!otherDirtyFieldsExist) {
+                 // Se não há mais campos sujos, remove o item do Map
+                 dirtyItems.delete(itemId);
+                 field.closest('tr').classList.remove('edited-row');
+                 console.log(`Item ${itemId} reverted to original state. Removed from dirty list.`);
+             } else {
+                 // Atualiza o Map com o objeto sem o campo revertido
+                 dirtyItems.set(itemId, dirtyData);
+                 field.closest('tr').classList.add('edited-row'); // Mantém amarelo se houver outras alterações
                  console.log(`Field ${fieldName} reverted on item ${itemId}, but other changes remain.`);
-            }
+             }
         } else {
-             // O valor ainda é diferente do original, mas igual ao estado 'dirty' anterior. Mantém sujo.
-             // (Este caso pode acontecer se o usuário digitar algo e apagar voltando ao valor sujo anterior)
-             field.closest('tr').classList.add('edited-row'); // Garante que a linha fique amarela
+             // Se não estava no dirtyItems, apenas remove a classe (caso tenha sido adicionada por sync)
+              field.closest('tr').classList.remove('edited-row');
         }
-        updatePaginationControls();
     }
+    updatePaginationControls();
 }
 
 
-// Handler separado para click
+// Handler separado para click (AGORA INCLUI SYNC)
 function handleTableClick(e) {
     const deleteBtn = e.target.closest('.delete-item-btn');
-    if (!deleteBtn) return;
+    const syncBtn = e.target.closest('.sync-tombo-btn'); // NOVO
 
-    const itemId = deleteBtn.dataset.id;
-    openDeleteConfirmModal([itemId]);
+    if (deleteBtn) {
+        const itemId = deleteBtn.dataset.id;
+        openDeleteConfirmModal([itemId]);
+    } else if (syncBtn) { // NOVO Bloco
+        const itemId = syncBtn.dataset.syncId;
+        handleSyncTombo(itemId, syncBtn); // Chama a nova função de sync
+    }
+}
+
+// **NOVA Função:** Lógica para sincronizar com GIAP
+async function handleSyncTombo(itemId, buttonEl) {
+    const row = buttonEl.closest('tr');
+    if (!row) return;
+    const tomboInput = row.querySelector('input[data-field="Tombamento"]');
+    const descInput = row.querySelector('input[data-field="Descrição"]');
+    const fornInput = row.querySelector('input[data-field="Fornecedor"]');
+
+    if (!tomboInput || !descInput || !fornInput) {
+        console.error("Não foi possível encontrar os campos na linha para sincronizar.");
+        return;
+    }
+
+    const tomboValueRaw = tomboInput.value;
+    const tomboValueNorm = normalizeTombo(tomboValueRaw);
+
+    if (!tomboValueNorm || tomboValueNorm.toLowerCase() === 's/t') {
+        showNotification("Digite um número de tombamento válido para buscar.", "warning");
+        return;
+    }
+
+    // Adiciona um spinner ao botão
+    buttonEl.disabled = true;
+    buttonEl.innerHTML = '<div class="btn-spinner" style="width: 12px; height: 12px; border-width: 2px;"></div>';
+
+    // Busca no GIAP (usando giapMapAllItems para pegar todos os status)
+    const giapItem = giapMapAllItems.get(tomboValueNorm);
+
+    if (giapItem) {
+        console.log(`GIAP data found for tombo ${tomboValueNorm}:`, giapItem);
+        const newDesc = giapItem.Descrição || giapItem.Espécie || '';
+        const newForn = giapItem['Nome Fornecedor'] || '';
+
+        // Atualiza os valores dos inputs VISUALMENTE
+        tomboInput.value = tomboValueNorm; // Atualiza para a versão normalizada
+        descInput.value = newDesc;
+        fornInput.value = newForn;
+
+        // --- SIMULA O EVENTO INPUT PARA ATUALIZAR dirtyItems ---
+        // Cria eventos de input
+        const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+
+        // Dispara o evento para cada campo atualizado
+        tomboInput.dispatchEvent(inputEvent);
+        descInput.dispatchEvent(inputEvent);
+        fornInput.dispatchEvent(inputEvent);
+        // --- Fim da simulação ---
+
+        showNotification(`Dados encontrados e aplicados para ${tomboValueNorm}.`, 'success');
+        // Talvez desabilitar o botão e o campo tombo após sucesso?
+        // tomboInput.readOnly = true;
+        // buttonEl.remove(); // Remove o botão
+
+    } else {
+        showNotification(`Tombamento ${tomboValueNorm} não encontrado na planilha GIAP.`, 'error');
+    }
+
+    // Restaura o botão
+    buttonEl.disabled = false;
+    buttonEl.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="pointer-events-none" viewBox="0 0 16 16">
+          <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+          <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466zM12.5 10a.5.5 0 0 1-.5.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 1 .5.5m-5-2.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m-5 5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5"/>
+        </svg>
+    `;
 }
 
 
@@ -1439,13 +1588,15 @@ function populateNfTab() {
     renderNfList();
 }
 
+// **MODIFICADO:** Função para renderizar lista de NF (Lazy Loading)
 function renderNfList() {
-    // ... (código original mantido)
-    const container = document.getElementById('notas-fiscais-container');
-    if (!container) return; // Verifica
-    container.innerHTML = '';
-    const tomboMap = new Map((fullInventory || []).map(item => item ? [item.Tombamento?.trim(), item] : null).filter(Boolean)); // Fallback e checagem item
+    const container = domCache.nfContainer; // Usa cache
+    if (!container) return;
+    container.innerHTML = ''; // Limpa antes de renderizar
+    loadedNfDetails.clear(); // Limpa o set de detalhes carregados
 
+    // Filtros (lógica existente mantida)
+    const tomboMap = new Map((fullInventory || []).map(item => item ? [item.Tombamento?.trim(), item] : null).filter(Boolean));
     const nfSearchTerm = document.getElementById('nf-search')?.value.toLowerCase() || '';
     const nfItemSearchTerm = document.getElementById('nf-item-search')?.value.toLowerCase() || '';
     const nfFornecedorTerm = document.getElementById('nf-fornecedor-search')?.value.toLowerCase() || '';
@@ -1453,16 +1604,12 @@ function renderNfList() {
     const nfStatusFilter = document.getElementById('nf-status-filter')?.value || '';
     const startDateStr = document.getElementById('nf-date-start')?.value || '';
     const endDateStr = document.getElementById('nf-date-end')?.value || '';
-
-
-    // Correção: Datas devem ser comparadas como objetos Date
-    const startDate = startDateStr ? new Date(startDateStr + 'T00:00:00') : null; // Adiciona hora para evitar problemas de fuso
-    let endDate = endDateStr ? new Date(endDateStr + 'T23:59:59') : null; // Adiciona hora para incluir o dia inteiro
-
+    const startDate = startDateStr ? new Date(startDateStr + 'T00:00:00') : null;
+    let endDate = endDateStr ? new Date(endDateStr + 'T23:59:59') : null;
 
     const filteredNfs = Object.keys(processedNfData).filter(nf => {
         const nfGroup = processedNfData[nf];
-        if (!nfGroup || !nfGroup.items) return false; // Segurança extra
+        if (!nfGroup || !nfGroup.items) return false;
         if (nfSearchTerm && !nf.toLowerCase().includes(nfSearchTerm)) return false;
         if (nfFornecedorTerm && !(nfGroup.fornecedor || '').toLowerCase().includes(nfFornecedorTerm)) return false;
         if (nfItemSearchTerm) {
@@ -1470,27 +1617,26 @@ function renderNfList() {
         }
         if (nfTipoEntrada && (nfGroup.tipoEntrada || '').trim() !== nfTipoEntrada) return false;
         if (nfStatusFilter) {
-            // Filtra o grupo se *nenhum* item dentro dele corresponder ao status
             if (!nfGroup.items.some(item => (item.Status || '').trim() === nfStatusFilter)) return false;
         }
         const nfDate = parsePtBrDate(nfGroup.dataCadastro);
         if (startDate && nfDate < startDate) return false;
-        if (endDate && nfDate > endDate) return false; // Ajustado para >
+        if (endDate && nfDate > endDate) return false;
         return true;
     });
 
-     // Ordena as NFs filtradas pela data de cadastro (mais recentes primeiro)
-     filteredNfs.sort((nfA, nfB) => {
+    filteredNfs.sort((nfA, nfB) => {
          const dateA = parsePtBrDate(processedNfData[nfA].dataCadastro);
          const dateB = parsePtBrDate(processedNfData[nfB].dataCadastro);
          return dateB - dateA;
      });
 
-
     if (filteredNfs.length === 0) {
         container.innerHTML = `<p class="text-slate-500 text-center p-4">Nenhuma nota fiscal encontrada com os filtros aplicados.</p>`;
         return;
     }
+
+    const fragment = document.createDocumentFragment(); // Usar fragmento para performance
 
     const categorizedNfs = filteredNfs.reduce((acc, nfKey) => {
         const nfGroup = processedNfData[nfKey];
@@ -1504,35 +1650,77 @@ function renderNfList() {
         const categoryHeader = document.createElement('h3');
         categoryHeader.className = 'text-lg font-bold text-slate-700 p-2 bg-slate-100 rounded-t-lg mt-6 first:mt-0';
         categoryHeader.textContent = category;
-        container.appendChild(categoryHeader);
-        categorizedNfs[category].forEach(nf => { // Já está ordenado por data dentro de filteredNfs
-            let totalNfValue = 0;
+        fragment.appendChild(categoryHeader);
+
+        categorizedNfs[category].forEach(nf => {
             const nfGroup = processedNfData[nf];
             const nfDetails = document.createElement('details');
-            nfDetails.className = 'bg-white rounded-lg shadow-sm border mb-3 border-t-0 rounded-t-none';
-            nfDetails.open = false;
-
-            const itemSummaryText = nfGroup.items.slice(0, 2).map(i => escapeHtml(i.Descrição || i.Espécie)).join(', ') + (nfGroup.items.length > 2 ? '...' : '');
-
+            nfDetails.className = 'nf-details bg-white rounded-lg shadow-sm border mb-3 border-t-0 rounded-t-none';
+            nfDetails.dataset.nfKey = nf; // Guarda a chave NF aqui
             nfDetails.innerHTML = `
-                <summary class="p-4 font-semibold cursor-pointer grid grid-cols-1 md:grid-cols-3 gap-4 items-center hover:bg-slate-50">
+                <summary class="nf-summary p-4 font-semibold cursor-pointer grid grid-cols-1 md:grid-cols-3 gap-4 items-center hover:bg-slate-50">
                     <div class="md:col-span-2">
                         <p class="text-xs text-slate-500">NF: <strong class="text-blue-700 text-sm">${escapeHtml(nf)}</strong> | Fornecedor: <strong>${escapeHtml(nfGroup.fornecedor)}</strong></p>
-                        <p class="text-xs text-slate-500 mt-1 truncate">Itens: ${itemSummaryText}</p>
+                        <p class="text-xs text-slate-500 mt-1 truncate">Itens: ${escapeHtml(nfGroup.items.slice(0, 2).map(i => i.Descrição || i.Espécie).join(', ')) + (nfGroup.items.length > 2 ? '...' : '')}</p>
                     </div>
                     <div><p class="text-xs text-slate-500">Data Cadastro</p><strong>${escapeHtml(nfGroup.dataCadastro)}</strong></div>
                 </summary>
+                <div class="nf-items-container p-4 border-t border-slate-200 space-y-2 hidden">
+                    <!-- Detalhes serão carregados aqui -->
+                    <div class="text-center p-4"><div class="loading-spinner w-8 h-8 mx-auto"></div> Carregando itens...</div>
+                </div>
             `;
+            fragment.appendChild(nfDetails);
+        });
+    });
 
-            const itemsListContainer = document.createElement('div');
-            itemsListContainer.className = 'p-4 border-t border-slate-200 space-y-2';
+    container.appendChild(fragment); // Adiciona tudo de uma vez
+    console.log(`Renderizados ${filteredNfs.length} resumos de NFs.`);
+}
 
-            // Filtra os itens *dentro* da NF se um filtro de status foi aplicado
-             const itemsToDisplay = nfStatusFilter
-                ? nfGroup.items.filter(item => (item.Status || '').trim() === nfStatusFilter)
-                : nfGroup.items;
+// **NOVO:** Handler para carregar detalhes da NF sob demanda
+function handleNfDetailsToggle(event) {
+    const detailsElement = event.target;
 
+    // Verifica se o evento é no elemento <details> e se está sendo aberto
+    if (detailsElement.tagName !== 'DETAILS' || !detailsElement.open) {
+        return;
+    }
 
+    const nfKey = detailsElement.dataset.nfKey;
+    const itemsContainer = detailsElement.querySelector('.nf-items-container');
+
+    // Se já carregou ou não tem a chave, não faz nada
+    if (!nfKey || !itemsContainer || loadedNfDetails.has(nfKey)) {
+        // Se já carregou, apenas garante que está visível
+        if (itemsContainer) itemsContainer.classList.remove('hidden');
+        return;
+    }
+
+    console.log(`Carregando detalhes para NF: ${nfKey}`);
+    itemsContainer.classList.remove('hidden'); // Mostra o container (com o spinner)
+
+    // Simula um pequeno atraso para o spinner aparecer e busca os dados
+    setTimeout(() => {
+        const nfGroup = processedNfData[nfKey];
+        if (!nfGroup || !nfGroup.items) {
+            itemsContainer.innerHTML = '<p class="text-red-500">Erro ao carregar itens.</p>';
+            return;
+        }
+
+        const tomboMap = new Map((fullInventory || []).map(item => item ? [item.Tombamento?.trim(), item] : null).filter(Boolean));
+        const nfStatusFilter = document.getElementById('nf-status-filter')?.value || ''; // Pega filtro atual
+
+        let totalNfValue = 0;
+        const itemsToDisplay = nfStatusFilter
+            ? nfGroup.items.filter(item => (item.Status || '').trim() === nfStatusFilter)
+            : nfGroup.items;
+
+        itemsContainer.innerHTML = ''; // Limpa o spinner
+
+        if (itemsToDisplay.length === 0) {
+            itemsContainer.innerHTML = '<p class="text-slate-500 text-center p-2">Nenhum item encontrado nesta NF com o filtro de status aplicado.</p>';
+        } else {
             itemsToDisplay.forEach(item => {
                 totalNfValue += parseCurrency(item['Valor NF']);
                 const tombo = item.TOMBAMENTO?.trim();
@@ -1546,26 +1734,30 @@ function renderNfList() {
                     : `<p class="px-2 py-1 text-xs font-semibold ${isAvailableForUse ? 'text-yellow-800 bg-yellow-100' : 'text-slate-700 bg-slate-200'} rounded-full text-center">NÃO ALOCADO</p>`;
                 let statusHtml = `<span class="px-2 py-1 text-xs font-semibold rounded-full ${isAvailableForUse ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}">${isAvailableForUse ? 'Disponível para uso' : `Indisponível (${escapeHtml(status)})`}</span>`;
 
-                itemsListContainer.innerHTML += `
-                    <div class="p-3 border rounded-md flex justify-between items-start gap-4 ${itemClass}">
-                        <div class="flex-1"><p class="font-bold text-slate-800 ${!allocatedItem && !isAvailableForUse ? 'line-through' : ''}">${escapeHtml(item.Descrição || item.Espécie)}</p><p class="text-sm text-slate-500">Tombamento: <span class="font-mono">${escapeHtml(tombo || 'N/D')}</span></p></div>
-                        <div class="text-right"><p class="text-xs text-slate-500">Valor</p><p class="font-semibold text-green-700">${parseCurrency(item['Valor NF']).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p></div>
-                        <div class="text-right ml-4 space-y-1.5 min-w-[150px]">${statusHtml}${allocationHtml}</div>
-                    </div>
+                const itemDiv = document.createElement('div');
+                itemDiv.className = `p-3 border rounded-md flex justify-between items-start gap-4 ${itemClass}`;
+                itemDiv.innerHTML = `
+                    <div class="flex-1"><p class="font-bold text-slate-800 ${!allocatedItem && !isAvailableForUse ? 'line-through' : ''}">${escapeHtml(item.Descrição || item.Espécie)}</p><p class="text-sm text-slate-500">Tombamento: <span class="font-mono">${escapeHtml(tombo || 'N/D')}</span></p></div>
+                    <div class="text-right"><p class="text-xs text-slate-500">Valor</p><p class="font-semibold text-green-700">${parseCurrency(item['Valor NF']).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p></div>
+                    <div class="text-right ml-4 space-y-1.5 min-w-[150px]">${statusHtml}${allocationHtml}</div>
                 `;
+                itemsContainer.appendChild(itemDiv);
             });
 
             // Mostra o total da NF apenas se todos os itens estiverem sendo exibidos
             if (itemsToDisplay.length === nfGroup.items.length) {
-                itemsListContainer.innerHTML += `<div class="p-3 border-t-2 mt-2 font-bold text-slate-800 flex justify-between items-center"><span>VALOR TOTAL DA NOTA</span><span>${totalNfValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>`;
+                const totalDiv = document.createElement('div');
+                totalDiv.className = 'p-3 border-t-2 mt-2 font-bold text-slate-800 flex justify-between items-center';
+                totalDiv.innerHTML = `<span>VALOR TOTAL DA NOTA</span><span>${totalNfValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>`;
+                itemsContainer.appendChild(totalDiv);
             }
+        }
 
 
-            nfDetails.appendChild(itemsListContainer);
-            container.appendChild(nfDetails);
-        });
-    });
+        loadedNfDetails.add(nfKey); // Marca como carregado
+    }, 100); // Pequeno delay
 }
+
 
 
 function populateGiapTab() {
@@ -3142,8 +3334,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Adiciona listeners que dependem do DOM da Aba Otimizada ---
     // (Movidos de initEditableInventoryTab para cá, pois dependem de initDomElements)
     const debouncedFilter = debounce(applyFiltersAndPaginate, DEBOUNCE_DELAY);
-    document.getElementById('edit-filter-tipo')?.addEventListener('change', debouncedFilter);
-    document.getElementById('edit-filter-unidade')?.addEventListener('change', debouncedFilter);
+    // **MODIFICADO:** Listener para tipo já está em initEditableInventoryTab
+    // document.getElementById('edit-filter-tipo')?.addEventListener('change', debouncedFilter); // <<-- REMOVIDO DAQUI
+    domCache.editFilterUnidade?.addEventListener('change', debouncedFilter); // Adicionado listener para Unidade
     document.getElementById('edit-filter-estado')?.addEventListener('change', debouncedFilter);
     document.getElementById('edit-filter-descricao')?.addEventListener('input', debouncedFilter);
 
