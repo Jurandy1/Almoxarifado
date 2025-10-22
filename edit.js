@@ -35,7 +35,7 @@ let updatesToProcess = [];
 let currentDeleteItemIds = []; // Usado pela aba otimizada
 
 // --- ESTADO DE INICIALIZAÇÃO ---
-let authReady = false; // Flag para indicar que a verificação inicial de login foi feita
+// REMOVIDO: let authReady = false; (Não é mais necessário com a nova lógica)
 let dataLoaded = false; // Flag para indicar que os dados principais foram carregados
 const initializedTabs = new Set(); // Conjunto para rastrear abas já inicializadas
 
@@ -64,7 +64,8 @@ const domCache = {
     filterWarning: null,
     // Gerais
     loadingScreen: null,
-    authGate: null,
+    authGate: null, // Agora é o overlay de "Acesso Negado"
+    appWrapper: null, // NOVO: O wrapper de toda a aplicação
     feedbackStatus: null,
     navButtons: null,
     contentPanes: null,
@@ -82,7 +83,8 @@ function initDomElements() {
     domCache.filterWarning = document.getElementById('filter-warning');
     // Gerais
     domCache.loadingScreen = document.getElementById('loading-or-error-screen');
-    domCache.authGate = document.getElementById('auth-gate');
+    domCache.authGate = document.getElementById('auth-gate'); // Div de overlay "Acesso Negado"
+    domCache.appWrapper = document.getElementById('app-wrapper'); // Div que envolve o app
     domCache.feedbackStatus = document.getElementById('feedback-status');
     domCache.navButtons = document.querySelectorAll('#edit-nav .nav-btn');
     domCache.contentPanes = document.querySelectorAll('main > div[id^="content-"]');
@@ -353,8 +355,10 @@ async function loadData(forceRefresh) {
         console.log("Data already loaded, skipping fetch.");
         return;
     }
+    // Assegura que a tela de loading esteja visível
     domCache.loadingScreen.classList.remove('hidden');
     domCache.feedbackStatus.textContent = 'Verificando cache de dados...';
+    
     const metadata = await idb.metadata.get('lastFetch');
     const isCacheStale = !metadata || (Date.now() - metadata.timestamp > CACHE_DURATION_MS);
 
@@ -2954,47 +2958,52 @@ function handleClearNfFilters() {
 document.addEventListener('DOMContentLoaded', () => {
     initDomElements(); // Cache DOM elements first
 
-    // Adiciona listener de autenticação APRIMORADO
+    // Adiciona listener de autenticação APRIMORADO (sem delay, sem authReady)
     addAuthListener(user => {
-        if (!authReady) {
-            // Este é o primeiro callback, define o estado inicial
-            authReady = true;
-            console.log("Auth state initialized.");
-             // Garante que o estado visual inicial seja 'não logado' até a confirmação
-             if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = 'Verificando...';
-             if (domCache.authGate) domCache.authGate.classList.remove('hidden'); // Mostra o bloqueio inicialmente
-             if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden'); // Esconde o loading
+        if (user) {
+            // --- USUÁRIO ESTÁ LOGADO ---
+            console.log("Auth state: Logged In");
+            if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = user.email;
+            
+            // Esconde a tela de "Acesso Negado"
+            if (domCache.authGate) domCache.authGate.classList.add('hidden');
+            
+            // Mostra o wrapper da aplicação
+            if (domCache.appWrapper) domCache.appWrapper.classList.remove('hidden');
+
+            if (!dataLoaded) {
+                // Se os dados não foram carregados, mostra a tela de loading e carrega
+                console.log("User logged in, data not loaded. Fetching data...");
+                if (domCache.loadingScreen) domCache.loadingScreen.classList.remove('hidden');
+                if (domCache.feedbackStatus) domCache.feedbackStatus.textContent = "Usuário autenticado. Carregando dados...";
+                loadData(false);
+            } else {
+                // Se os dados JÁ foram carregados (ex: HMR), só garante que loading está escondido
+                console.log("User logged in, data already loaded.");
+                if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden');
+                // Garante que a aba ativa seja inicializada caso ainda não tenha sido
+                const currentActiveTab = document.querySelector('#edit-nav .nav-btn.active')?.dataset.tab || 'edicao';
+                initializeTabContent(currentActiveTab);
+            }
+
+        } else {
+            // --- USUÁRIO NÃO ESTÁ LOGADO ---
+            console.log("Auth state: Logged Out");
+            if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = 'Não logado';
+
+            // Esconde a tela de loading e o app
+            if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden');
+            if (domCache.appWrapper) domCache.appWrapper.classList.add('hidden');
+
+            // Prepara e mostra a tela de "Acesso Negado"
+            const authGateMessage = `<div class="flex items-center justify-center h-screen"><div class="text-center p-8 bg-white rounded-lg shadow-xl"><h2 class="text-2xl font-bold text-red-600 mb-4">Acesso Negado</h2><p>Você precisa estar logado para acessar esta página.</p><p class="mt-2 text-sm">Volte para a página principal para fazer o login.</p></div></div>`;
+            if (domCache.authGate) {
+                domCache.authGate.innerHTML = authGateMessage;
+                domCache.authGate.classList.remove('hidden');
+            }
         }
-
-         // Pequeno delay para dar tempo ao Firebase de confirmar o estado
-         setTimeout(() => {
-            const currentUser = auth.currentUser; // Pega o estado atualizado
-             if (currentUser) {
-                 if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = currentUser.email;
-                 if (domCache.authGate) domCache.authGate.classList.add('hidden'); // Esconde o bloqueio
-                 if (domCache.loadingScreen) domCache.loadingScreen.classList.remove('hidden'); // Mostra carregando dados
-                 if (domCache.feedbackStatus) domCache.feedbackStatus.textContent = "Usuário autenticado. Carregando dados...";
-                 if (!dataLoaded) {
-                     loadData(false); // Carrega os dados APENAS se logado e dados não carregados
-                 } else {
-                     if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden'); // Esconde o loading se dados já estavam carregados
-                     // Se dados já carregados, inicializa a aba ativa
-                      const currentActiveTab = document.querySelector('#edit-nav .nav-btn.active')?.dataset.tab || 'edicao';
-                      initializeTabContent(currentActiveTab);
-                 }
-             } else {
-                 if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = 'Não logado';
-                 if (domCache.authGate) domCache.authGate.classList.remove('hidden'); // Mostra o bloqueio
-                 if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden'); // Esconde o carregando
-                 // Coloca a mensagem de erro dentro do authGate, não no loadingScreen
-                 const authGateMessage = `<div class="flex items-center justify-center h-screen"><div class="text-center p-8 bg-white rounded-lg shadow-xl"><h2 class="text-2xl font-bold text-red-600 mb-4">Acesso Negado</h2><p>Você precisa estar logado para acessar esta página.</p><p class="mt-2 text-sm">Volte para a página principal para fazer o login.</p></div></div>`;
-                 if (domCache.authGate) domCache.authGate.innerHTML = authGateMessage;
-
-             }
-         }, 500); // Aumenta um pouco o delay se necessário
-
-
     });
+
 
     // Listeners de Navegação (Lazy Loading)
     if(domCache.navButtons) {
@@ -3012,14 +3021,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
                 // Inicializa o conteúdo da aba SE necessário e SE logado/dados carregados
-                if (authReady && auth.currentUser && dataLoaded) {
+                if (auth.currentUser && dataLoaded) {
                     initializeTabContent(tabName);
-                } else if (authReady && !auth.currentUser) {
+                } else if (!auth.currentUser) {
                      console.log("User not logged in, cannot initialize tab content.");
                      showNotification("Faça login para acessar esta aba.", "warning");
                 } else {
-                     console.log("Auth or data not ready, delaying tab initialization.");
-                      showNotification("Aguarde o carregamento dos dados...", "info");
+                     console.log("Data not ready, delaying tab initialization.");
+                      // Não mostra notificação, pois a tela de loading já está visível
                 }
             });
         });
