@@ -206,3 +206,139 @@ body {
 .delete-link-btn:hover {
     background-color: #fee2e2;
 }
+
+/* INÍCIO: ESTILOS OTIMIZADOS ADICIONADOS 
+  (do arquivo edit_STYLES_OTIMIZADO.css)
+*/
+
+/* Linhas editadas ficam amarelas */
+.edited-row {
+    background-color: #fef3c7 !important;
+    border-left: 4px solid #f59e0b;
+    transition: background-color 0.2s ease;
+}
+
+/* Campos editáveis com foco */
+.editable-field {
+    transition: all 0.15s ease;
+}
+
+.editable-field:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: -1px;
+    background-color: #eff6ff;
+}
+
+.editable-field:hover:not(:focus) {
+    border-color: #93c5fd;
+}
+
+/* Campo readonly (vinculado ao GIAP) */
+.editable-field[readonly] {
+    background-color: #f1f5f9;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* Linhas da tabela */
+#edit-table-body tr {
+    transition: background-color 0.1s ease;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+#edit-table-body tr:hover:not(.edited-row) {
+    background-color: #f8fafc;
+}
+
+/* Botão de deletar */
+.delete-item-btn {
+    cursor: pointer;
+    transition: transform 0.1s ease;
+}
+
+.delete-item-btn:hover {
+    transform: scale(1.2);
+}
+
+/* Animação de pulso para botão salvar */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: .8;
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Header sticky da tabela */
+thead {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Scrollbar customizada */
+.overflow-auto::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.overflow-auto::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 5px;
+}
+
+.overflow-auto::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 5px;
+}
+
+.overflow-auto::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+
+/* Loading overlay */
+#loading-overlay {
+    backdrop-filter: blur(2px);
+}
+
+/* Feedback visual para ações rápidas */
+.success-flash {
+    animation: successFlash 0.5s ease;
+}
+
+@keyframes successFlash {
+    0% { background-color: #d1fae5; }
+    100% { background-color: transparent; }
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    #edit-table-body td {
+        padding: 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    .editable-field {
+        padding: 0.25rem;
+        font-size: 0.75rem;
+    }
+}
+
+/* Melhorias de performance CSS */
+* {
+    will-change: auto; /* Remove will-change desnecessário */
+}
+
+/* Hardware acceleration apenas onde necessário */
+.editable-field,
+.delete-item-btn,
+#save-all-changes-btn {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+/* FIM: ESTILOS OTIMIZADOS ADICIONADOS 
+*/
