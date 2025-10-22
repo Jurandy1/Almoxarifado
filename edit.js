@@ -35,7 +35,6 @@ let updatesToProcess = [];
 let currentDeleteItemIds = []; // Usado pela aba otimizada
 
 // --- ESTADO DE INICIALIZAÇÃO ---
-// REMOVIDO: let authReady = false; (Não é mais necessário com a nova lógica)
 let dataLoaded = false; // Flag para indicar que os dados principais foram carregados
 const initializedTabs = new Set(); // Conjunto para rastrear abas já inicializadas
 
@@ -358,21 +357,32 @@ async function loadData(forceRefresh) {
     // Assegura que a tela de loading esteja visível
     domCache.loadingScreen.classList.remove('hidden');
     domCache.feedbackStatus.textContent = 'Verificando cache de dados...';
-    
+    console.log("Verificando cache..."); // LOG ADICIONAL
+
     const metadata = await idb.metadata.get('lastFetch');
     const isCacheStale = !metadata || (Date.now() - metadata.timestamp > CACHE_DURATION_MS);
 
     if (!forceRefresh && !isCacheStale) {
+        console.log("Cache válido. Carregando do IndexedDB..."); // LOG ADICIONAL
         domCache.feedbackStatus.textContent = 'Carregando dados do cache local...';
-        [fullInventory, giapInventory, unitMapping, customGiapUnits, reconciledUnits] = await Promise.all([
-            idb.patrimonio.toArray(),
-            idb.giap.toArray(),
-            loadUnitMappingFromFirestore(),
-            loadCustomGiapUnits(),
-            loadReconciledUnits()
-        ]);
-        showNotification('Dados carregados do cache.', 'info');
+        try {
+            [fullInventory, giapInventory, unitMapping, customGiapUnits, reconciledUnits] = await Promise.all([
+                idb.patrimonio.toArray(),
+                idb.giap.toArray(),
+                loadUnitMappingFromFirestore(),
+                loadCustomGiapUnits(),
+                loadReconciledUnits()
+            ]);
+            console.log(`Dados carregados do cache: Inventário(${fullInventory.length}), GIAP(${giapInventory.length})`); // LOG ADICIONAL
+            showNotification('Dados carregados do cache.', 'info');
+        } catch (cacheError) {
+             console.error("Erro ao carregar do cache:", cacheError);
+             showNotification('Erro ao ler o cache local.', 'error');
+             // Forçar busca do servidor se o cache falhar
+             return loadData(true);
+        }
     } else {
+        console.log("Cache inválido ou refresh forçado. Buscando do servidor..."); // LOG ADICIONAL
         domCache.feedbackStatus.textContent = 'Buscando dados atualizados do servidor...';
         try {
             [fullInventory, giapInventory, unitMapping, customGiapUnits, reconciledUnits] = await Promise.all([
@@ -382,63 +392,94 @@ async function loadData(forceRefresh) {
                 loadCustomGiapUnits(),
                 loadReconciledUnits()
             ]);
+            console.log(`Dados carregados do servidor: Inventário(${fullInventory.length}), GIAP(${giapInventory.length})`); // LOG ADICIONAL
             await idb.transaction('rw', idb.patrimonio, idb.giap, idb.metadata, async () => {
                 await idb.patrimonio.clear(); await idb.patrimonio.bulkAdd(fullInventory);
                 await idb.giap.clear(); await idb.giap.bulkAdd(giapInventory);
                 await idb.metadata.put({ key: 'lastFetch', timestamp: Date.now() });
             });
+            console.log("Cache atualizado no IndexedDB."); // LOG ADICIONAL
             showNotification('Dados atualizados com sucesso!', 'success');
         } catch (error) {
+            console.error("Erro ao buscar dados do servidor:", error); // LOG ADICIONAL
             domCache.loadingScreen.innerHTML = `<div class="text-center"><h2 class="text-xl font-bold text-red-600">Erro ao Carregar Dados</h2><p>${error.message}</p></div>`;
             showNotification('Erro ao carregar dados do servidor.', 'error');
             dataLoaded = false;
-            // Tenta carregar do cache como fallback
+            // Tenta carregar do cache como fallback (MELHORADO)
              try {
+                 console.log("Tentando fallback para o cache..."); // LOG ADICIONAL
                  domCache.feedbackStatus.textContent = 'Falha ao buscar. Tentando carregar do cache...';
-                [fullInventory, giapInventory, unitMapping, customGiapUnits, reconciledUnits] = await Promise.all([
+                [fullInventory, giapInventory] = await Promise.all([ // Só carrega o essencial do cache
                     idb.patrimonio.toArray(),
                     idb.giap.toArray(),
-                    loadUnitMappingFromFirestore(), // Essas ainda tentam do Firestore
+                ]);
+                 // Carrega config do Firestore mesmo no fallback
+                 [unitMapping, customGiapUnits, reconciledUnits] = await Promise.all([
+                    loadUnitMappingFromFirestore(),
                     loadCustomGiapUnits(),
                     loadReconciledUnits()
-                ]);
+                 ]);
+
                  if (fullInventory.length > 0) {
+                     console.log(`Fallback para cache bem-sucedido: Inventário(${fullInventory.length}), GIAP(${giapInventory.length})`); // LOG ADICIONAL
                      showNotification('Dados carregados do cache (fallback).', 'warning');
                  } else {
                      throw new Error("Cache vazio ou inacessível."); // Força o erro se o cache também falhar
                  }
             } catch (cacheError) {
-                 console.error("Erro ao carregar dados (Servidor e Cache):", error, cacheError);
+                 console.error("Erro ao carregar dados (Servidor e Cache Fallback):", error, cacheError); // LOG ADICIONAL
                  domCache.loadingScreen.innerHTML = `<div class="text-center"><h2 class="text-xl font-bold text-red-600">Erro Crítico</h2><p>Não foi possível carregar os dados do servidor nem do cache local. Verifique sua conexão e tente recarregar a página.</p><p class="text-sm mt-2">${error.message}</p></div>`;
                  return; // Impede a continuação
             }
         }
     }
 
-    // Processamento essencial dos dados
-    giapMap = new Map(giapInventory
-        .filter(item => normalizeStr(item.Status).includes(normalizeStr('Disponível')))
-        .map(item => [normalizeTombo(item['TOMBAMENTO']), item])
-    );
-    giapMapAllItems = new Map(giapInventory.map(item => [normalizeTombo(item['TOMBAMENTO']), item]));
+    // Processamento essencial dos dados (verificações adicionadas)
+    if (giapInventory && giapInventory.length > 0) {
+        giapMap = new Map(giapInventory
+            .filter(item => item && normalizeStr(item.Status).includes(normalizeStr('Disponível')))
+            .map(item => [normalizeTombo(item['TOMBAMENTO']), item])
+        );
+        giapMapAllItems = new Map(giapInventory.map(item => item ? [normalizeTombo(item['TOMBAMENTO']), item] : null).filter(Boolean));
+        console.log(`GIAP Maps criados: giapMap(${giapMap.size}), giapMapAllItems(${giapMapAllItems.size})`); // LOG ADICIONAL
+    } else {
+         console.warn("giapInventory está vazio ou inválido. Maps não foram criados.");
+         giapMap = new Map();
+         giapMapAllItems = new Map();
+    }
+
 
     normalizedSystemUnits.clear();
-    fullInventory.forEach(item => {
-        if (item.Unidade) {
-            const normalized = normalizeStr(item.Unidade);
-            if (!normalizedSystemUnits.has(normalized)) {
-                normalizedSystemUnits.set(normalized, item.Unidade.trim());
+    if (fullInventory && fullInventory.length > 0) {
+        fullInventory.forEach(item => {
+            if (item && item.Unidade) {
+                const normalized = normalizeStr(item.Unidade);
+                if (!normalizedSystemUnits.has(normalized)) {
+                    normalizedSystemUnits.set(normalized, item.Unidade.trim());
+                }
             }
-        }
-    });
+        });
+        console.log(`Unidades do sistema normalizadas: ${normalizedSystemUnits.size}`); // LOG ADICIONAL
+    } else {
+         console.warn("fullInventory está vazio ou inválido. Unidades do sistema não normalizadas.");
+    }
+
 
     // Chama a função que foi movida para cima
     await carregarPadroesConciliacao();
 
     dataLoaded = true;
-    domCache.feedbackStatus.textContent = `Pronto. ${fullInventory.length} itens carregados.`;
-    domCache.loadingScreen.classList.add('hidden');
-    console.log("Data loading complete.");
+    domCache.feedbackStatus.textContent = `Pronto. ${fullInventory?.length || 0} itens carregados.`; // Usar fallback
+    domCache.loadingScreen.classList.add('hidden'); // Esconde o loading AQUI
+    console.log("Data loading complete. Hidden loading screen."); // LOG ADICIONAL
+
+    // **MOVER** a exibição do appWrapper para depois do processamento
+    if (domCache.appWrapper) {
+         domCache.appWrapper.classList.remove('hidden');
+         console.log("App wrapper displayed."); // LOG ADICIONAL
+    } else {
+         console.error("App wrapper not found in DOM cache!");
+    }
 
     // Inicializa a primeira aba visível (geralmente 'edicao')
     const initialTab = document.querySelector('#edit-nav .nav-btn.active')?.dataset.tab || 'edicao';
@@ -454,8 +495,11 @@ function initializeTabContent(tabName) {
         console.warn("Attempted to initialize tab before data was loaded.");
         return;
     }
+    // Adiciona log para verificar se os dados estão presentes
+    console.log(`Initializing tab content for: ${tabName}. Inventory count: ${fullInventory?.length || 0}`);
+
     if (initializedTabs.has(tabName)) {
-        console.log(`Tab ${tabName} already initialized.`);
+        console.log(`Tab ${tabName} already initialized. Re-rendering (if applicable)...`); // LOG ADICIONAL
         // Re-executa a função de renderização principal da aba para garantir atualização
         // Exceto para a aba 'edicao' que tem sua própria lógica de re-render
         if (tabName !== 'edicao') {
@@ -476,7 +520,7 @@ function initializeTabContent(tabName) {
         return;
     }
 
-    console.log(`Initializing tab: ${tabName}`);
+    console.log(`Initializing tab for the first time: ${tabName}`); // LOG ADICIONAL
     try {
         switch (tabName) {
             case 'edicao':
@@ -516,10 +560,10 @@ function initializeTabContent(tabName) {
 // --- FUNÇÕES DE INICIALIZAÇÃO POR ABA ---
 
 function initEditableInventoryTab() {
-    console.log("Initializing Editable Inventory Tab");
+    console.log("Initializing Editable Inventory Tab"); // LOG ADICIONAL
     // Popula os filtros da aba editável
-    const tipos = [...new Set(fullInventory.map(i => i.Tipo))].filter(Boolean).sort();
-    const unidades = [...new Set(fullInventory.map(i => i.Unidade))].filter(Boolean).sort();
+    const tipos = [...new Set((fullInventory || []).map(i => i.Tipo))].filter(Boolean).sort(); // Fallback
+    const unidades = [...new Set((fullInventory || []).map(i => i.Unidade))].filter(Boolean).sort(); // Fallback
     const tipoSelect = document.getElementById('edit-filter-tipo');
     const unidadeSelect = document.getElementById('edit-filter-unidade');
     if (tipoSelect) tipoSelect.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
@@ -530,6 +574,7 @@ function initEditableInventoryTab() {
     setupEventDelegation(); // Configura os listeners otimizados
 }
 
+// ... (Restante do código de initUnitMappingTab, initReconciliationTab, etc., permanece o mesmo) ...
 function initUnitMappingTab() {
     console.log("Initializing Unit Mapping Tab");
     populateUnitMappingTab(); // Chama a função original que popula a UI
@@ -651,6 +696,7 @@ function initGiapTab() {
     populateGiapTab(); // Chama a função original
 }
 
+
 // --- FIM: FUNÇÕES DE INICIALIZAÇÃO POR ABA ---
 
 
@@ -673,14 +719,17 @@ function applyFiltersAndPaginate() {
     // Detectar se há QUALQUER filtro ativo
     isFiltered = !!(tipo || unidade || estado || descricao);
 
-    // Filtrar inventário
-    filteredInventory = fullInventory.filter(item => {
+    // Filtrar inventário (Adicionado fallback para array vazio)
+    filteredInventory = (fullInventory || []).filter(item => {
+        if (!item) return false; // Segurança extra
         if (tipo && item.Tipo !== tipo) return false;
         if (unidade && item.Unidade !== unidade) return false;
         if (estado && item.Estado !== estado) return false;
         if (descricao && !normalizeStr(item.Descrição || '').includes(descricao)) return false;
         return true;
     });
+    console.log(`Filtros aplicados. Itens filtrados: ${filteredInventory.length}`); // LOG ADICIONAL
+
 
     // LÓGICA ADAPTATIVA:
     // Se filtrado = mostrar TODOS os resultados (para edição em massa)
@@ -689,6 +738,7 @@ function applyFiltersAndPaginate() {
         showAllItems = true;
         totalPages = 1;
         currentPage = 1;
+        console.log("Modo filtrado: mostrando todos os itens."); // LOG ADICIONAL
 
         // Aviso se muitos itens
         if (filteredInventory.length > MAX_ITEMS_WITHOUT_WARNING && domCache.filterWarning) {
@@ -705,8 +755,9 @@ function applyFiltersAndPaginate() {
         if(domCache.paginationControls) domCache.paginationControls.classList.add('hidden');
     } else {
         showAllItems = false;
-        totalPages = Math.max(1, Math.ceil(filteredInventory.length / ITEMS_PER_PAGE_DEFAULT));
+        totalPages = Math.max(1, Math.ceil((filteredInventory?.length || 0) / ITEMS_PER_PAGE_DEFAULT)); // Fallback
         currentPage = Math.min(currentPage, totalPages);
+        console.log(`Modo paginado: Página ${currentPage}/${totalPages}`); // LOG ADICIONAL
         if(domCache.filterWarning) domCache.filterWarning.classList.add('hidden');
         if(domCache.paginationControls) domCache.paginationControls.classList.remove('hidden');
     }
@@ -730,72 +781,86 @@ function renderEditableTable() {
         // Mostrar TODOS os filtrados
         itemsToRender = filteredInventory;
     } else {
-        // Paginação normal
+        // Paginação normal (Adicionado fallback para array vazio)
         const start = (currentPage - 1) * ITEMS_PER_PAGE_DEFAULT;
         const end = start + ITEMS_PER_PAGE_DEFAULT;
-        itemsToRender = filteredInventory.slice(start, end);
+        itemsToRender = (filteredInventory || []).slice(start, end);
     }
+    console.log(`Itens para renderizar na tabela: ${itemsToRender?.length || 0}`); // LOG ADICIONAL
+
 
     // Usar DocumentFragment para renderização super rápida
     const fragment = document.createDocumentFragment();
 
     // Renderizar em lote
-    itemsToRender.forEach(item => {
-        const itemData = dirtyItems.get(item.id) || item; // Pega dados 'sujos' se existirem
+    if (itemsToRender && itemsToRender.length > 0) {
+        itemsToRender.forEach(item => {
+            if (!item || !item.id) { // Checagem extra de segurança
+                console.warn("Item inválido encontrado durante a renderização:", item);
+                return;
+            }
+            const itemData = dirtyItems.get(item.id) || item; // Pega dados 'sujos' se existirem
+            const tr = document.createElement('tr');
+            tr.dataset.id = item.id;
+            tr.className = dirtyItems.has(item.id) ? 'edited-row' : '';
+
+            const giapItem = giapMap.get(normalizeTombo(itemData.Tombamento));
+            const hasGiap = !!giapItem;
+            const tomboReadonly = hasGiap ? 'readonly title="Vinculado ao GIAP"' : '';
+
+            tr.innerHTML = `
+                <td class="px-2 py-1 text-xs whitespace-nowrap">${escapeHtml(itemData.Tipo || '')}</td>
+                <td class="px-2 py-1 text-xs whitespace-nowrap">${escapeHtml(itemData.Unidade || '')}</td>
+                <td class="px-2 py-1 text-xs">
+                    <input type="text" class="w-full p-1 border rounded text-xs editable-field"
+                           data-field="Tombamento" data-id="${item.id}"
+                           value="${escapeHtml(itemData.Tombamento || '')}" ${tomboReadonly}>
+                </td>
+                <td class="px-2 py-1 text-xs" style="min-width: 200px;">
+                    <input type="text" class="w-full p-1 border rounded text-xs editable-field"
+                           data-field="Descrição" data-id="${item.id}"
+                           value="${escapeHtml(itemData.Descrição || '')}">
+                </td>
+                <td class="px-2 py-1 text-xs" style="min-width: 150px;">
+                    <input type="text" class="w-full p-1 border rounded text-xs editable-field"
+                           data-field="Fornecedor" data-id="${item.id}"
+                           value="${escapeHtml(itemData.Fornecedor || '')}">
+                </td>
+                <td class="px-2 py-1 text-xs" style="min-width: 150px;">
+                    <input type="text" class="w-full p-1 border rounded text-xs editable-field"
+                           data-field="Localização" data-id="${item.id}"
+                           value="${escapeHtml(itemData.Localização || '')}">
+                </td>
+                <td class="px-2 py-1 text-xs">
+                    <select class="w-full p-1 border rounded text-xs editable-field"
+                            data-field="Estado" data-id="${item.id}">
+                        <option value="Novo" ${itemData.Estado === 'Novo' ? 'selected' : ''}>Novo</option>
+                        <option value="Bom" ${itemData.Estado === 'Bom' ? 'selected' : ''}>Bom</option>
+                        <option value="Regular" ${itemData.Estado === 'Regular' ? 'selected' : ''}>Regular</option>
+                        <option value="Avariado" ${itemData.Estado === 'Avariado' ? 'selected' : ''}>Avariado</option>
+                    </select>
+                </td>
+                <td class="px-2 py-1 text-xs" style="min-width: 150px;">
+                    <textarea class="w-full p-1 border rounded text-xs editable-field" rows="1"
+                              data-field="Observação" data-id="${item.id}">${escapeHtml(itemData.Observação || '')}</textarea>
+                </td>
+                <td class="px-2 py-1 text-center">
+                    <button class="text-red-600 hover:text-red-800 delete-item-btn text-lg"
+                            data-id="${item.id}" title="Excluir item">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="pointer-events-none" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3h11V2h-11v1z"/></svg>
+                    </button>
+                </td>
+            `;
+
+            fragment.appendChild(tr);
+        });
+    } else {
+        // Exibe mensagem se não houver itens para renderizar
         const tr = document.createElement('tr');
-        tr.dataset.id = item.id;
-        tr.className = dirtyItems.has(item.id) ? 'edited-row' : '';
-
-        const giapItem = giapMap.get(normalizeTombo(itemData.Tombamento));
-        const hasGiap = !!giapItem;
-        const tomboReadonly = hasGiap ? 'readonly title="Vinculado ao GIAP"' : '';
-
-        tr.innerHTML = `
-            <td class="px-2 py-1 text-xs whitespace-nowrap">${escapeHtml(itemData.Tipo || '')}</td>
-            <td class="px-2 py-1 text-xs whitespace-nowrap">${escapeHtml(itemData.Unidade || '')}</td>
-            <td class="px-2 py-1 text-xs">
-                <input type="text" class="w-full p-1 border rounded text-xs editable-field"
-                       data-field="Tombamento" data-id="${item.id}"
-                       value="${escapeHtml(itemData.Tombamento || '')}" ${tomboReadonly}>
-            </td>
-            <td class="px-2 py-1 text-xs" style="min-width: 200px;">
-                <input type="text" class="w-full p-1 border rounded text-xs editable-field"
-                       data-field="Descrição" data-id="${item.id}"
-                       value="${escapeHtml(itemData.Descrição || '')}">
-            </td>
-            <td class="px-2 py-1 text-xs" style="min-width: 150px;">
-                <input type="text" class="w-full p-1 border rounded text-xs editable-field"
-                       data-field="Fornecedor" data-id="${item.id}"
-                       value="${escapeHtml(itemData.Fornecedor || '')}">
-            </td>
-            <td class="px-2 py-1 text-xs" style="min-width: 150px;">
-                <input type="text" class="w-full p-1 border rounded text-xs editable-field"
-                       data-field="Localização" data-id="${item.id}"
-                       value="${escapeHtml(itemData.Localização || '')}">
-            </td>
-            <td class="px-2 py-1 text-xs">
-                <select class="w-full p-1 border rounded text-xs editable-field"
-                        data-field="Estado" data-id="${item.id}">
-                    <option value="Novo" ${itemData.Estado === 'Novo' ? 'selected' : ''}>Novo</option>
-                    <option value="Bom" ${itemData.Estado === 'Bom' ? 'selected' : ''}>Bom</option>
-                    <option value="Regular" ${itemData.Estado === 'Regular' ? 'selected' : ''}>Regular</option>
-                    <option value="Avariado" ${itemData.Estado === 'Avariado' ? 'selected' : ''}>Avariado</option>
-                </select>
-            </td>
-            <td class="px-2 py-1 text-xs" style="min-width: 150px;">
-                <textarea class="w-full p-1 border rounded text-xs editable-field" rows="1"
-                          data-field="Observação" data-id="${item.id}">${escapeHtml(itemData.Observação || '')}</textarea>
-            </td>
-            <td class="px-2 py-1 text-center">
-                <button class="text-red-600 hover:text-red-800 delete-item-btn text-lg"
-                        data-id="${item.id}" title="Excluir item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="pointer-events-none" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3h11V2h-11v1z"/></svg>
-                </button>
-            </td>
-        `;
-
+        tr.innerHTML = `<td colspan="9" class="text-center p-10 text-slate-500">Nenhum item encontrado${isFiltered ? ' com os filtros aplicados' : ''}.</td>`;
         fragment.appendChild(tr);
-    });
+    }
+
 
     // Limpar e inserir de uma vez (super rápido)
     requestAnimationFrame(() => {
@@ -805,27 +870,29 @@ function renderEditableTable() {
 
 
     const renderTime = (performance.now() - startTime).toFixed(0);
-    console.log(`✅ ${itemsToRender.length} itens renderizados em ${renderTime}ms (Render Function)`);
+    console.log(`✅ ${itemsToRender?.length || 0} itens renderizados em ${renderTime}ms (Render Function)`);
 }
 
 function updatePaginationControls() {
     if (!domCache.pageInfo) return;
 
+    const inventoryLength = filteredInventory?.length || 0; // Fallback
+
     if (showAllItems) {
         // Modo filtrado - mostrar todos
         domCache.pageInfo.innerHTML = `
             <span class="text-green-600 font-semibold">
-                📋 Mostrando TODOS os ${filteredInventory.length} itens filtrados
+                📋 Mostrando TODOS os ${inventoryLength} itens filtrados
             </span>
             ${dirtyItems.size > 0 ? `<span class="text-orange-600 ml-3">✏️ ${dirtyItems.size} alterações pendentes</span>` : ''}
         `;
     } else {
         // Modo paginado
-        const start = filteredInventory.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE_DEFAULT + 1;
-        const end = Math.min(currentPage * ITEMS_PER_PAGE_DEFAULT, filteredInventory.length);
+        const start = inventoryLength === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE_DEFAULT + 1;
+        const end = Math.min(currentPage * ITEMS_PER_PAGE_DEFAULT, inventoryLength);
 
         domCache.pageInfo.innerHTML = `
-            Mostrando ${start}-${end} de ${filteredInventory.length} itens (Página ${currentPage}/${totalPages})
+            Mostrando ${start}-${end} de ${inventoryLength} itens (Página ${currentPage}/${totalPages})
             ${dirtyItems.size > 0 ? `<span class="text-orange-600 ml-3">✏️ ${dirtyItems.size} alterações</span>` : ''}
         `;
 
@@ -1124,7 +1191,7 @@ function handleDescChoiceCancel() {
 // ... (populateUnitMappingTab, updateSystemUnitOptions, etc., como na versão anterior) ...
 function populateUnitMappingTab() {
     // ... (código original mantido)
-    const systemTypes = [...new Set(fullInventory.map(i => i.Tipo).filter(Boolean))].sort();
+    const systemTypes = [...new Set((fullInventory || []).map(i => i.Tipo).filter(Boolean))].sort(); // Fallback
     const mapFilterTipo = document.getElementById('map-filter-tipo');
     if(mapFilterTipo) mapFilterTipo.innerHTML = '<option value="">Todos os Tipos</option>' + systemTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
     updateSystemUnitOptions();
@@ -1153,7 +1220,7 @@ function updateGiapUnitOptions() {
     if (!mapGiapUnitMultiselect || !mapGiapFilter) return; // Verifica
 
     const filterText = normalizeStr(mapGiapFilter.value);
-    let allGiapUnitsFromSheet = [...new Set(giapInventory.map(i => i.Unidade).filter(Boolean))];
+    let allGiapUnitsFromSheet = [...new Set((giapInventory || []).map(i => i.Unidade).filter(Boolean))]; // Fallback
     let allGiapUnits = [...new Set([...allGiapUnitsFromSheet, ...customGiapUnits.map(u => u.name)])].sort();
 
     const mapSystemUnitSelect = document.getElementById('map-system-unit-select');
@@ -1227,7 +1294,8 @@ function populatePendingTransfersTab() {
     // ... (código original mantido)
     const pendingTransfersContainer = document.getElementById('pending-transfers-container');
      if (!pendingTransfersContainer) return; // Verifica
-     const pendingTransfers = fullInventory.filter(item => {
+     const pendingTransfers = (fullInventory || []).filter(item => { // Fallback
+        if (!item) return false;
         const tombo = item.Tombamento?.trim();
         if (!tombo || normalizeStr(tombo).includes('permuta') || tombo.toLowerCase() === 's/t') return false;
 
@@ -1336,10 +1404,10 @@ function parsePtBrDate(dateStr) {
 
 function populateNfTab() {
     // ... (código original mantido)
-    if (giapInventory.length === 0) return;
+    if (!giapInventory || giapInventory.length === 0) return; // Fallback
 
     const giapWithNf = giapInventory
-        .filter(item => item.NF && item.NF.trim() !== '')
+        .filter(item => item && item.NF && item.NF.trim() !== '') // Checagem item
         .sort((a, b) => {
             const dateA = parsePtBrDate(a.Cadastro);
             const dateB = parsePtBrDate(b.Cadastro);
@@ -1362,7 +1430,7 @@ function populateNfTab() {
         return acc;
     }, {});
 
-    const allStatuses = [...new Set(giapInventory.map(item => (item.Status || '').trim()).filter(Boolean))].sort();
+    const allStatuses = [...new Set(giapInventory.map(item => item ? (item.Status || '').trim() : '').filter(Boolean))].sort(); // Checagem item
     const statusFilterEl = document.getElementById('nf-status-filter');
     if (statusFilterEl) {
         statusFilterEl.innerHTML = '<option value="">Todos os Status</option>' + allStatuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
@@ -1376,7 +1444,7 @@ function renderNfList() {
     const container = document.getElementById('notas-fiscais-container');
     if (!container) return; // Verifica
     container.innerHTML = '';
-    const tomboMap = new Map(fullInventory.map(item => [item.Tombamento?.trim(), item]));
+    const tomboMap = new Map((fullInventory || []).map(item => item ? [item.Tombamento?.trim(), item] : null).filter(Boolean)); // Fallback e checagem item
 
     const nfSearchTerm = document.getElementById('nf-search')?.value.toLowerCase() || '';
     const nfItemSearchTerm = document.getElementById('nf-item-search')?.value.toLowerCase() || '';
@@ -1394,6 +1462,7 @@ function renderNfList() {
 
     const filteredNfs = Object.keys(processedNfData).filter(nf => {
         const nfGroup = processedNfData[nf];
+        if (!nfGroup || !nfGroup.items) return false; // Segurança extra
         if (nfSearchTerm && !nf.toLowerCase().includes(nfSearchTerm)) return false;
         if (nfFornecedorTerm && !(nfGroup.fornecedor || '').toLowerCase().includes(nfFornecedorTerm)) return false;
         if (nfItemSearchTerm) {
@@ -1507,9 +1576,10 @@ function populateGiapTab() {
     const thead = giapTableBody.closest('table').querySelector('thead tr');
     if (thead) thead.innerHTML = headers.map(h => `<th class="p-3 text-left font-semibold">${h}</th>`).join('');
 
-    const tomboMap = new Map(fullInventory.map(item => [normalizeTombo(item.Tombamento), item]));
+    const tomboMap = new Map((fullInventory || []).map(item => item ? [normalizeTombo(item.Tombamento), item] : null).filter(Boolean)); // Fallback
 
-    giapTableBody.innerHTML = giapInventory.map(item => {
+    giapTableBody.innerHTML = (giapInventory || []).map(item => { // Fallback
+        if (!item) return ''; // Segurança extra
         const tombo = normalizeTombo(item.TOMBAMENTO);
         const allocatedItem = tomboMap.get(tombo);
 
@@ -1535,7 +1605,7 @@ function populateGiapTab() {
 
 function populateImportAndReplaceTab() {
     // ... (código original mantido)
-    const tipos = [...new Set(fullInventory.map(item => item.Tipo).filter(Boolean))].sort();
+    const tipos = [...new Set((fullInventory || []).map(item => item.Tipo).filter(Boolean))].sort(); // Fallback
 
     const selects = [
         document.getElementById('mass-transfer-tipo'),
@@ -1559,7 +1629,7 @@ function populateImportAndReplaceTab() {
                 unitSelect.disabled = true;
                 return;
             }
-            const unidades = [...new Set(fullInventory.filter(i => i.Tipo === selectedTipo).map(i => i.Unidade).filter(Boolean))].sort();
+            const unidades = [...new Set((fullInventory || []).filter(i => i.Tipo === selectedTipo).map(i => i.Unidade).filter(Boolean))].sort(); // Fallback
             unitSelect.innerHTML = '<option value="">Selecione uma Unidade</option>' + unidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
             unitSelect.disabled = false;
         });
@@ -1578,7 +1648,7 @@ function populateImportAndReplaceTab() {
 
 function populateReconciliationTab() {
     // ... (código original mantido)
-    const tipos = [...new Set(fullInventory.map(item => item.Tipo).filter(Boolean))].sort();
+    const tipos = [...new Set((fullInventory || []).map(item => item.Tipo).filter(Boolean))].sort(); // Fallback
     const sel = document.getElementById('filter-tipo');
     if (sel) sel.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
 
@@ -1609,6 +1679,7 @@ function renderList(containerId, arr, keyField, primaryLabelField, suggestionInf
         return;
     }
     arr.forEach((item, index) => {
+        if (!item) return; // Segurança extra
         const id = item[keyField];
          if (id === undefined || id === null) {
              console.warn("Item skipped in renderList due to missing keyField:", item);
@@ -1663,10 +1734,11 @@ function renderList(containerId, arr, keyField, primaryLabelField, suggestionInf
 
 function getGlobalLeftovers() {
     // ... (código original mantido)
-    const usedTombamentos = new Set(fullInventory.map(i => normalizeTombo(i.Tombamento)).filter(Boolean));
+    const usedTombamentos = new Set((fullInventory || []).map(i => i ? normalizeTombo(i.Tombamento) : null).filter(Boolean)); // Fallback
     linksToCreate.forEach(link => usedTombamentos.add(normalizeTombo(link.giapItem.TOMBAMENTO)));
 
-    return giapInventory.filter(g => {
+    return (giapInventory || []).filter(g => { // Fallback
+        if (!g) return false; // Segurança extra
         const tombo = normalizeTombo(g.TOMBAMENTO);
         // Garante que o status 'Disponível' seja verificado corretamente
         const statusOK = g.Status && normalizeStr(g.Status).includes(normalizeStr('Disponível'));
@@ -1683,13 +1755,14 @@ function getConciliationData() {
     const systemFilterText = normalizeStr(document.getElementById('system-list-filter').value);
     const giapFilterText = normalizeStr(document.getElementById('giap-list-filter').value);
 
-    const usedTombamentos = new Set(fullInventory.map(i => normalizeTombo(i.Tombamento)).filter(Boolean));
+    const usedTombamentos = new Set((fullInventory || []).map(i => i ? normalizeTombo(i.Tombamento) : null).filter(Boolean)); // Fallback
     linksToCreate.forEach(link => usedTombamentos.add(normalizeTombo(link.giapItem.TOMBAMENTO)));
 
     const mappedGiapUnits = unitMapping[unidade] || [unidade];
     const mappedGiapUnitsNormalized = mappedGiapUnits.map(normalizeStr); // Normaliza unidades mapeadas
 
-    const systemItems = fullInventory.filter(i => {
+    const systemItems = (fullInventory || []).filter(i => { // Fallback
+        if (!i) return false;
         const tombo = (i.Tombamento || '').trim().toLowerCase();
         const isPending = linksToCreate.some(l => l.systemItem.id === i.id);
         return !isPending &&
@@ -1699,7 +1772,8 @@ function getConciliationData() {
                normalizeStr(i.Descrição || '').includes(systemFilterText); // Adiciona fallback para Descrição
     });
 
-    const giapItems = giapInventory.filter(g => {
+    const giapItems = (giapInventory || []).filter(g => { // Fallback
+        if (!g) return false;
         const tomboTrimmed = normalizeTombo(g.TOMBAMENTO);
         const giapDesc = normalizeStr(g.Descrição || g.Espécie || ''); // Adiciona fallback
          const statusOK = g.Status && normalizeStr(g.Status).includes(normalizeStr('Disponível')); // Verifica status
@@ -1898,8 +1972,8 @@ function renderItensATombar() {
     const tipo = document.getElementById('tombar-filter-tipo').value;
     const unidade = document.getElementById('tombar-filter-unidade').value;
 
-    const itemsPendentes = fullInventory.filter(item =>
-        item.etiquetaPendente === true &&
+    const itemsPendentes = (fullInventory || []).filter(item => // Fallback
+        item && item.etiquetaPendente === true && // Checagem item
         (!tipo || item.Tipo === tipo) &&
         (!unidade || item.Unidade === unidade)
     );
@@ -1952,12 +2026,12 @@ function renderItensATombar() {
 
 function populateSobrantesTab() {
      // ... (código original mantido)
-    const reconciledTypes = [...new Set(fullInventory.filter(i => reconciledUnits.includes(i.Unidade)).map(i => i.Tipo).filter(Boolean))].sort();
+    const reconciledTypes = [...new Set((fullInventory || []).filter(i => i && reconciledUnits.includes(i.Unidade)).map(i => i.Tipo).filter(Boolean))].sort(); // Fallback e checagem item
     const sobrasTipoSelect = document.getElementById('sobras-filter-tipo');
     if (sobrasTipoSelect) sobrasTipoSelect.innerHTML = '<option value="">Selecione um Tipo</option>' + reconciledTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
 
     const sobrasGiapTypeSelect = document.getElementById('sobras-giap-type-filter');
-    const allTypes = [...new Set(fullInventory.map(i => i.Tipo).filter(Boolean))].sort();
+    const allTypes = [...new Set((fullInventory || []).map(i => i.Tipo).filter(Boolean))].sort(); // Fallback
     if(sobrasGiapTypeSelect) sobrasGiapTypeSelect.innerHTML = '<option value="">Todos os Tipos</option>' + allTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
 
     if (sobrasTipoSelect) {
@@ -2026,7 +2100,8 @@ function renderSobrantesConciliation() {
     renderCreatedLinks('sobras');
 
     const systemFilterText = normalizeStr(document.getElementById('sobras-system-list-filter').value);
-    const systemItems = fullInventory.filter(i => {
+    const systemItems = (fullInventory || []).filter(i => { // Fallback
+        if (!i) return false;
         const tombo = (i.Tombamento || '').trim().toLowerCase();
         const isPending = linksToCreate.some(l => l.systemItem.id === i.id);
         return !isPending &&
@@ -2096,8 +2171,8 @@ function handleConciliationTypeChange() {
     if (!filterTipo || !filterUnidade) return; // Verifica
 
     const tipo = filterTipo.value;
-    const unidades = [...new Set(fullInventory
-        .filter(i => !reconciledUnits.includes(i.Unidade))
+    const unidades = [...new Set((fullInventory || []) // Fallback
+        .filter(i => i && !reconciledUnits.includes(i.Unidade)) // Checagem item
         .filter(i => !tipo || i.Tipo === tipo)
         .map(i => i.Unidade).filter(Boolean))].sort();
 
@@ -2336,7 +2411,7 @@ function handleConciliationSubTabSwitch(e) {
 
 // Handler para popular filtros da aba "Itens a Tombar"
 function populateTombarTabFilters() {
-     const tipos = [...new Set(fullInventory.filter(i => i.etiquetaPendente === true).map(i => i.Tipo).filter(Boolean))].sort();
+     const tipos = [...new Set((fullInventory || []).filter(i => i && i.etiquetaPendente === true).map(i => i.Tipo).filter(Boolean))].sort(); // Fallback e checagem item
      const tipoSelect = document.getElementById('tombar-filter-tipo');
      if(tipoSelect) tipoSelect.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
 
@@ -2383,8 +2458,8 @@ function handleDeleteCreatedLinkSobras(e) {
 // Handlers da Aba Itens a Tombar
 function handleTombarFilterChange() {
     const tipo = document.getElementById('tombar-filter-tipo').value;
-    const unidades = [...new Set(fullInventory
-        .filter(i => i.etiquetaPendente === true && (!tipo || i.Tipo === tipo))
+    const unidades = [...new Set((fullInventory || []) // Fallback
+        .filter(i => i && i.etiquetaPendente === true && (!tipo || i.Tipo === tipo)) // Checagem item
         .map(i => i.Unidade).filter(Boolean))].sort();
     const selU = document.getElementById('tombar-filter-unidade');
     if(selU) {
@@ -2643,8 +2718,8 @@ function handlePreviewEditByDesc() {
                  return;
             }
             const pastedData = results.data;
-            const inventoryInUnit = fullInventory.filter(i => i.Unidade === unidade);
-            const existingTombos = new Map(fullInventory.map(i => [normalizeTombo(i.Tombamento), i]));
+            const inventoryInUnit = (fullInventory || []).filter(i => i.Unidade === unidade); // Fallback
+            const existingTombos = new Map((fullInventory || []).map(i => i ? [normalizeTombo(i.Tombamento), i] : null).filter(Boolean)); // Fallback
 
             const availableItems = inventoryInUnit.map(item => ({ item, isMatched: false }));
 
@@ -2810,7 +2885,7 @@ function handleMassTransferSearch() {
     if (!tombosInputEl) return; // Verifica
     const tombosInput = tombosInputEl.value;
     const tombos = tombosInput.split(/[\s,]+/).map(t => normalizeTombo(t.trim())).filter(Boolean); // Normaliza aqui
-    const existingTombos = new Set(fullInventory.map(i => normalizeTombo(i.Tombamento))); // Normaliza aqui
+    const existingTombos = new Set((fullInventory || []).map(i => i ? normalizeTombo(i.Tombamento) : null).filter(Boolean)); // Fallback e checagem item // Normaliza aqui
     const foundItems = []; const notFound = [];
     tombos.forEach(tombo => {
         const giapItem = giapMap.get(tombo); // Já busca normalizado
@@ -2912,7 +2987,7 @@ async function handleSaveGiapUnit() {
     }
 
     const normalizedNewName = normalizeStr(newUnitName);
-    const allGiapUnitNames = new Set(giapInventory.map(i => normalizeStr(i.Unidade)).filter(Boolean));
+    const allGiapUnitNames = new Set((giapInventory || []).map(i => i ? normalizeStr(i.Unidade) : null).filter(Boolean)); // Fallback
     const allCustomUnitNames = new Set(customGiapUnits.map(u => normalizeStr(u.name)));
 
     if (allGiapUnitNames.has(normalizedNewName) || allCustomUnitNames.has(normalizedNewName)) {
@@ -2964,23 +3039,25 @@ document.addEventListener('DOMContentLoaded', () => {
             // --- USUÁRIO ESTÁ LOGADO ---
             console.log("Auth state: Logged In");
             if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = user.email;
-            
+
             // Esconde a tela de "Acesso Negado"
             if (domCache.authGate) domCache.authGate.classList.add('hidden');
-            
-            // Mostra o wrapper da aplicação
-            if (domCache.appWrapper) domCache.appWrapper.classList.remove('hidden');
+
+            // --- MOSTRA O WRAPPER SÓ DEPOIS DOS DADOS ---
+            // if (domCache.appWrapper) domCache.appWrapper.classList.remove('hidden'); // <<-- REMOVIDO DAQUI
 
             if (!dataLoaded) {
                 // Se os dados não foram carregados, mostra a tela de loading e carrega
                 console.log("User logged in, data not loaded. Fetching data...");
                 if (domCache.loadingScreen) domCache.loadingScreen.classList.remove('hidden');
                 if (domCache.feedbackStatus) domCache.feedbackStatus.textContent = "Usuário autenticado. Carregando dados...";
-                loadData(false);
+                loadData(false); // Chama loadData, que agora é responsável por mostrar o appWrapper
             } else {
                 // Se os dados JÁ foram carregados (ex: HMR), só garante que loading está escondido
                 console.log("User logged in, data already loaded.");
                 if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden');
+                // **GARANTE** que o wrapper está visível neste caso também
+                if (domCache.appWrapper) domCache.appWrapper.classList.remove('hidden');
                 // Garante que a aba ativa seja inicializada caso ainda não tenha sido
                 const currentActiveTab = document.querySelector('#edit-nav .nav-btn.active')?.dataset.tab || 'edicao';
                 initializeTabContent(currentActiveTab);
@@ -3089,3 +3166,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 }); // Fim do DOMContentLoaded
+
