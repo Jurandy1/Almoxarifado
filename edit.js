@@ -655,7 +655,7 @@ function initReconciliationTab() {
     document.getElementById('system-list-filter')?.addEventListener('input', debouncedRenderConciliation);
     document.getElementById('giap-list-filter')?.addEventListener('input', debouncedRenderConciliation);
     document.getElementById('clear-selections')?.addEventListener('click', handleClearConciliationSelections);
-    document.getElementById('save-links')?.addEventListener('click', () => savePendingLinks('unidade').then(handleSaveLinksResult));
+    document.getElementById('save-links')?.addEventListener('click', () => savePendingLinks('unidade').then(handleSaveLinksResult)); // Chama savePendingLinks
     document.getElementById('finish-reconciliation-btn')?.addEventListener('click', handleFinishReconciliation);
     document.getElementById('created-links')?.addEventListener('click', handleDeleteCreatedLink);
     document.getElementById('import-giap-btn')?.addEventListener('click', handleImportGiapItems);
@@ -672,7 +672,7 @@ function initReconciliationTab() {
     document.getElementById('sobras-system-list-filter')?.addEventListener('input', debouncedRenderSobrantes);
     document.getElementById('sobras-giap-list-filter')?.addEventListener('input', debouncedRenderSobrantes);
     document.getElementById('sobras-giap-type-filter')?.addEventListener('change', debouncedRenderSobrantes);
-    document.getElementById('sobras-save-links')?.addEventListener('click', () => savePendingLinks('sobras').then(handleSaveLinksResultSobras));
+    document.getElementById('sobras-save-links')?.addEventListener('click', () => savePendingLinks('sobras').then(handleSaveLinksResultSobras)); // Chama savePendingLinks
     document.getElementById('sobras-clear-selections')?.addEventListener('click', handleClearSobrantesSelections);
     document.getElementById('sobras-created-links')?.addEventListener('click', handleDeleteCreatedLinkSobras);
 
@@ -1333,6 +1333,80 @@ function handleDescChoiceCancel() {
     closeDescriptionChoiceModal();
 }
 // --- FIM Handlers Modal Descrição ---
+
+// **NOVA Função:** Salvar Vínculos Pendentes (Conciliação)
+async function savePendingLinks(context = 'unidade') {
+    console.log(`Iniciando savePendingLinks para contexto: ${context}`); // LOG ADICIONAL
+    if (linksToCreate.length === 0) {
+        showNotification('Nenhum vínculo novo para salvar.', 'info');
+        return true; // Retorna true pois não há erro
+    }
+
+    showOverlay(`Salvando ${linksToCreate.length} vínculos...`);
+    const batch = writeBatch(db);
+    const itemsToUpdateCache = [];
+    const patternsToSave = [];
+
+    linksToCreate.forEach(link => {
+        const systemItemRef = doc(db, 'patrimonio', link.systemItem.id);
+        const finalDesc = link.useGiapDescription
+            ? (link.giapItem.Descrição || link.giapItem.Espécie || link.systemItem.Descrição)
+            : link.systemItem.Descrição;
+
+        const updatedData = {
+            Tombamento: link.giapItem.TOMBAMENTO,
+            Descrição: finalDesc,
+            Fornecedor: link.giapItem['Nome Fornecedor'] || link.systemItem.Fornecedor || '', // Prioriza GIAP
+            NF: link.giapItem.NF || link.systemItem.NF || '', // Prioriza GIAP
+            etiquetaPendente: true, // Marca para colocar a etiqueta
+            updatedAt: serverTimestamp()
+        };
+
+        batch.update(systemItemRef, updatedData);
+        // Guarda dados para atualizar cache e array local
+        itemsToUpdateCache.push({ id: link.systemItem.id, changes: updatedData });
+
+        // Prepara padrão de conciliação para salvar
+        const score = calculateSimilarity(
+            `${link.systemItem.Descrição || ''} ${link.systemItem.Fornecedor || ''}`.trim(),
+            `${link.giapItem.Descrição || ''} ${link.giapItem.Espécie || ''} ${link.giapItem['Nome Fornecedor'] || ''}`.trim()
+        );
+        patternsToSave.push({ systemItem: link.systemItem, giapItem: link.giapItem, score });
+    });
+
+    try {
+        console.log(`Executando batch com ${linksToCreate.length} updates.`); // LOG ADICIONAL
+        await batch.commit();
+
+        // Salva os padrões de conciliação (sem esperar)
+        patternsToSave.forEach(p => salvarPadraoConciliacao(p.systemItem, p.giapItem, p.score));
+
+        // Atualiza cache e array principal
+        await idb.transaction('rw', idb.patrimonio, async () => {
+            for (const itemUpdate of itemsToUpdateCache) {
+                 await idb.patrimonio.update(itemUpdate.id, itemUpdate.changes);
+                 const index = fullInventory.findIndex(i => i.id === itemUpdate.id);
+                 if (index > -1) {
+                     // Atualiza o item no array principal
+                     fullInventory[index] = { ...fullInventory[index], ...itemUpdate.changes };
+                 }
+            }
+        });
+        console.log(`${itemsToUpdateCache.length} itens atualizados localmente.`); // LOG ADICIONAL
+
+        linksToCreate = []; // Limpa a lista de links pendentes APÓS salvar
+        renderCreatedLinks(context); // Limpa a UI
+        hideOverlay();
+        console.log("savePendingLinks concluído com sucesso."); // LOG ADICIONAL
+        return true; // Indica sucesso
+
+    } catch (error) {
+        hideOverlay();
+        showNotification('Erro ao salvar os vínculos.', 'error');
+        console.error("Erro ao salvar vínculos:", error);
+        return false; // Indica falha
+    }
+}
 
 
 // --- SEÇÃO ORIGINAL MANTIDA (Outras Abas) ---
@@ -2437,16 +2511,27 @@ function handleSaveLinksResult(success) {
     if (success) {
         showNotification('Vínculos salvos! Atualizando listas...', 'success');
         renderConciliationLists();
-        hideOverlay();
+        // Não esconde o overlay aqui, pois pode ser chamado pelo finish
+    } else {
+        hideOverlay(); // Esconde o overlay se deu erro
     }
-    // O erro já é tratado dentro de savePendingLinks
 }
+function handleSaveLinksResultSobras(success) { // Handler separado para Sobras
+    if (success) {
+        showNotification('Vínculos salvos! Atualizando listas...', 'success');
+        renderSobrantesConciliation();
+        hideOverlay();
+    } else {
+         hideOverlay(); // Esconde o overlay se deu erro
+    }
+}
+
 
 async function handleFinishReconciliation() {
     const unidadeEl = document.getElementById('filter-unidade');
     if (!unidadeEl) return; // Verifica
     const unidade = unidadeEl.value.trim();
-    const success = await savePendingLinks('unidade');
+    const success = await savePendingLinks('unidade'); // Salva pendências antes de mudar
     if (success) {
         showOverlay('Finalizando unidade...');
         if (unidade && !reconciledUnits.includes(unidade)) {
@@ -2486,6 +2571,9 @@ async function handleFinishReconciliation() {
 
         hideOverlay();
         showNotification('Pronto para conciliar com os itens sobrando.', 'info');
+    } else {
+        // Se savePendingLinks falhar, hideOverlay já foi chamado lá
+        console.log("Finalização cancelada devido a erro ao salvar vínculos pendentes.");
     }
 }
 
@@ -2616,13 +2704,13 @@ function populateTombarTabFilters() {
 
 
 // Handlers da Aba Conciliar Sobras
-function handleSaveLinksResultSobras(success) {
-     if (success) {
-        showNotification('Vínculos salvos! Atualizando listas...', 'success');
-        renderSobrantesConciliation();
-        hideOverlay();
-    }
-}
+// function handleSaveLinksResultSobras(success) { // Removido, handleSaveLinksResult agora trata ambos os casos
+//      if (success) {
+//         showNotification('Vínculos salvos! Atualizando listas...', 'success');
+//         renderSobrantesConciliation();
+//         hideOverlay();
+//     }
+// }
 function handleClearSobrantesSelections() {
      selSys = selGiap = null;
     document.querySelectorAll('#sobras-system-list .selected').forEach(el => el.classList.remove('selected'));
