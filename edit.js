@@ -230,9 +230,12 @@ async function salvarPadraoConciliacao(systemItem, giapItem, score) {
 }
 
 function suggestGiapMatchesComAprendizado(systemItem, giapSourceItems) {
-    const activeTab = document.getElementById('subtab-conciliar-sobras').classList.contains('hidden') ? 'unidade' : 'sobras';
-    const giapListId = activeTab === 'sobras' ? 'sobras-giap-list' : 'giap-list';
-    const context = activeTab === 'sobras' ? 'sobras' : 'default';
+    const activeTabEl = document.querySelector('#content-conciliar .sub-nav-btn.active');
+    const activeSubTab = activeTabEl ? activeTabEl.dataset.subtabConciliar : 'conciliacao_unidade';
+    const isSobrantesTab = activeSubTab === 'conciliacao_sobras';
+
+    const giapListId = isSobrantesTab ? 'sobras-giap-list' : 'giap-list';
+    const context = isSobrantesTab ? 'sobras' : 'default';
 
     if (!giapSourceItems || giapSourceItems.length === 0) {
         renderList(giapListId, [], 'TOMBAMENTO', 'Descrição', null, context);
@@ -243,33 +246,50 @@ function suggestGiapMatchesComAprendizado(systemItem, giapSourceItems) {
     const scoredItems = giapSourceItems.map(giapItem => {
         const giapDesc = `${giapItem.Descrição || ''} ${giapItem.Espécie || ''} ${giapItem['Nome Fornecedor'] || ''}`.trim();
         let baseScore = calculateSimilarity(systemDesc, giapDesc);
+        // Ajuste de pontuação baseado no fornecedor
         if (systemItem.Fornecedor && systemItem.Fornecedor !== '-' && giapItem['Nome Fornecedor'] && giapItem['Nome Fornecedor'] !== '-') {
-            const fornecedorMatch = calculateSimilarity(systemItem.Fornecedor, giapItem['Nome Fornecedor']);
-            if (fornecedorMatch > 0.7) { baseScore += 0.15; }
+             const fornNormSys = normalizeStr(systemItem.Fornecedor);
+             const fornNormGiap = normalizeStr(giapItem['Nome Fornecedor']);
+             // Verificação mais flexível (contém partes significativas)
+             const fornPartsSys = fornNormSys.split(' ').filter(p => p.length > 3);
+             const fornPartsGiap = fornNormGiap.split(' ').filter(p => p.length > 3);
+             const commonParts = fornPartsSys.filter(p => fornPartsGiap.includes(p));
+             if (commonParts.length > 0) {
+                 baseScore += 0.10 * commonParts.length; // Bônus por partes em comum
+             }
         }
         return { item: giapItem, baseScore: Math.min(baseScore, 1.0), bonusScore: 0 };
     });
 
+    // Aplica aprendizado dos padrões
     if (padroesConciliacao.length > 0) {
         padroesConciliacao.forEach(padrao => {
             const similaridadeComPadrao = calculateSimilarity(systemDesc, `${padrao.descricaoSistema} ${padrao.fornecedorSistema}`);
-            if (similaridadeComPadrao > 0.7) {
+            if (similaridadeComPadrao > 0.7) { // Limiar de similaridade com o padrão
                 scoredItems.forEach(scored => {
                     const giapDescCompleta = `${scored.item.Descrição || ''} ${scored.item.Espécie || ''} ${scored.item['Nome Fornecedor'] || ''}`;
                     const similaridadeComPadraoGiap = calculateSimilarity(giapDescCompleta, `${padrao.descricaoGIAP} ${padrao.fornecedorGIAP}`);
-                    if (similaridadeComPadraoGiap > 0.6) {
-                        const boost = similaridadeComPadrao * similaridadeComPadraoGiap * 0.2;
+                    if (similaridadeComPadraoGiap > 0.6) { // Limiar de similaridade GIAP
+                        // Boost baseado na força da correspondência com o padrão
+                        const boost = similaridadeComPadrao * similaridadeComPadraoGiap * 0.25; // Aumentei um pouco o boost
                         scored.bonusScore += boost;
+                         console.log(`Applied boost ${boost.toFixed(3)} to ${scored.item.TOMBAMENTO} based on pattern match.`);
                     }
                 });
             }
         });
     }
 
+
     scoredItems.forEach(scored => { scored.finalScore = Math.min(scored.baseScore + scored.bonusScore, 1.0); });
     scoredItems.sort((a, b) => b.finalScore - a.finalScore);
     const topScore = scoredItems.length > 0 ? scoredItems[0].finalScore : 0;
     const suggestionMap = new Map(scoredItems.map(si => [si.item.TOMBAMENTO, si.finalScore]));
+
+    // Log para depuração
+     console.log(`Top suggestions for "${systemItem.Descrição}":`);
+     scoredItems.slice(0, 5).forEach(si => console.log(`  - ${si.item.TOMBAMENTO}: ${si.finalScore.toFixed(3)} (Base: ${si.baseScore.toFixed(3)}, Bonus: ${si.bonusScore.toFixed(3)}) - ${si.item.Descrição || si.item.Espécie}`));
+
 
     renderList(giapListId, scoredItems.map(si => si.item), 'TOMBAMENTO', 'Descrição', { suggestions: suggestionMap, topScore: topScore }, context);
 }
@@ -307,11 +327,14 @@ function findBestMatchForItem(pastedItem, availableSystemItems) {
     const potentialMatches = availableSystemItems
         .filter(w => !w.isMatched)
         .map(w => ({ wrapper: w, score: calculateSimilarity(w.item.Descrição, pastedItem.descricao) }))
-        .filter(match => match.score > 0.65)
+        .filter(match => match.score > 0.65) // Limiar de similaridade
         .sort((a, b) => b.score - a.score);
 
     if (potentialMatches.length > 0) {
+        // Verifica ambiguidade
         if (potentialMatches.length > 1 && (potentialMatches[0].score - potentialMatches[1].score) < 0.1) {
+            // Se os scores são muito próximos, considera ambíguo
+             console.log(`Ambiguous match for "${pastedItem.descricao}": `, potentialMatches.slice(0,3));
             return { wrapper: null, matchType: 'Ambigua (Similaridade)' };
         }
         const bestMatch = potentialMatches[0];
@@ -495,8 +518,8 @@ function initEditableInventoryTab() {
     const unidades = [...new Set(fullInventory.map(i => i.Unidade))].filter(Boolean).sort();
     const tipoSelect = document.getElementById('edit-filter-tipo');
     const unidadeSelect = document.getElementById('edit-filter-unidade');
-    tipoSelect.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
-    unidadeSelect.innerHTML = '<option value="">Todas as Unidades</option>' + unidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+    if (tipoSelect) tipoSelect.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+    if (unidadeSelect) unidadeSelect.innerHTML = '<option value="">Todas as Unidades</option>' + unidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
 
     // Aplica filtros/paginação iniciais e configura eventos
     applyFiltersAndPaginate();
@@ -510,45 +533,45 @@ function initUnitMappingTab() {
     document.getElementById('map-filter-tipo')?.addEventListener('change', updateSystemUnitOptions);
     document.getElementById('map-system-unit-select')?.addEventListener('change', updateGiapUnitOptions);
     document.getElementById('map-giap-filter')?.addEventListener('input', debounce(updateGiapUnitOptions, 300));
-    document.getElementById('save-mapping-btn')?.addEventListener('click', handleSaveMapping); // Criar handleSaveMapping
-    document.getElementById('saved-mappings-container')?.addEventListener('click', handleDeleteMapping); // Criar handleDeleteMapping
+    document.getElementById('save-mapping-btn')?.addEventListener('click', handleSaveMapping);
+    document.getElementById('saved-mappings-container')?.addEventListener('click', handleDeleteMapping);
 }
 
 function initReconciliationTab() {
     console.log("Initializing Reconciliation Tab");
     populateReconciliationTab(); // Chama a função original
     // Adiciona listeners específicos
-    document.getElementById('filter-tipo')?.addEventListener('change', handleConciliationTypeChange); // Criar handle...
-    document.getElementById('load-conciliar')?.addEventListener('click', handleLoadConciliation); // Criar handle...
+    document.getElementById('filter-tipo')?.addEventListener('change', handleConciliationTypeChange);
+    document.getElementById('load-conciliar')?.addEventListener('click', handleLoadConciliation);
     const debouncedRenderConciliation = debounce(renderConciliationLists, 300);
     document.getElementById('system-list-filter')?.addEventListener('input', debouncedRenderConciliation);
     document.getElementById('giap-list-filter')?.addEventListener('input', debouncedRenderConciliation);
-    document.getElementById('clear-selections')?.addEventListener('click', handleClearConciliationSelections); // Criar handle...
-    document.getElementById('save-links')?.addEventListener('click', () => savePendingLinks('unidade').then(handleSaveLinksResult)); // Criar handle...
-    document.getElementById('finish-reconciliation-btn')?.addEventListener('click', handleFinishReconciliation); // Criar handle...
-    document.getElementById('created-links')?.addEventListener('click', handleDeleteCreatedLink); // Criar handle...
-    document.getElementById('import-giap-btn')?.addEventListener('click', handleImportGiapItems); // Criar handle...
+    document.getElementById('clear-selections')?.addEventListener('click', handleClearConciliationSelections);
+    document.getElementById('save-links')?.addEventListener('click', () => savePendingLinks('unidade').then(handleSaveLinksResult));
+    document.getElementById('finish-reconciliation-btn')?.addEventListener('click', handleFinishReconciliation);
+    document.getElementById('created-links')?.addEventListener('click', handleDeleteCreatedLink);
+    document.getElementById('import-giap-btn')?.addEventListener('click', handleImportGiapItems);
 
     // Listeners das sub-abas de conciliação
     const subNavButtonsConciliar = document.querySelectorAll('#content-conciliar .sub-nav-btn');
     subNavButtonsConciliar.forEach(button => {
-        button.addEventListener('click', handleConciliationSubTabSwitch); // Criar handle...
+        button.addEventListener('click', handleConciliationSubTabSwitch);
     });
 
-    // Adiciona listeners para a sub-aba Sobras (se necessário)
+    // Adiciona listeners para a sub-aba Sobras
     document.getElementById('load-sobras-conciliar')?.addEventListener('click', renderSobrantesConciliation);
     const debouncedRenderSobrantes = debounce(renderSobrantesConciliation, 300);
     document.getElementById('sobras-system-list-filter')?.addEventListener('input', debouncedRenderSobrantes);
     document.getElementById('sobras-giap-list-filter')?.addEventListener('input', debouncedRenderSobrantes);
     document.getElementById('sobras-giap-type-filter')?.addEventListener('change', debouncedRenderSobrantes);
-    document.getElementById('sobras-save-links')?.addEventListener('click', () => savePendingLinks('sobras').then(handleSaveLinksResultSobras)); // Criar handle...
-    document.getElementById('sobras-clear-selections')?.addEventListener('click', handleClearSobrantesSelections); // Criar handle...
-    document.getElementById('sobras-created-links')?.addEventListener('click', handleDeleteCreatedLinkSobras); // Criar handle...
+    document.getElementById('sobras-save-links')?.addEventListener('click', () => savePendingLinks('sobras').then(handleSaveLinksResultSobras));
+    document.getElementById('sobras-clear-selections')?.addEventListener('click', handleClearSobrantesSelections);
+    document.getElementById('sobras-created-links')?.addEventListener('click', handleDeleteCreatedLinkSobras);
 
      // Listeners sub-aba Itens a Tombar
-    document.getElementById('tombar-filter-tipo')?.addEventListener('change', handleTombarFilterChange); // Criar handle...
+    document.getElementById('tombar-filter-tipo')?.addEventListener('change', handleTombarFilterChange);
     document.getElementById('tombar-filter-unidade')?.addEventListener('change', renderItensATombar);
-    document.getElementById('itens-a-tombar-container')?.addEventListener('click', handleConfirmTombamento); // Criar handle...
+    document.getElementById('itens-a-tombar-container')?.addEventListener('click', handleConfirmTombamento);
 }
 
 function initSobrantesTab() {
@@ -577,7 +600,7 @@ function initPendingTransfersTab() {
     console.log("Initializing Pending Transfers Tab");
     populatePendingTransfersTab(); // Chama a função original
     // Adiciona listeners específicos
-    document.getElementById('pending-transfers-container')?.addEventListener('click', handleTransferAction); // Criar handle...
+    document.getElementById('pending-transfers-container')?.addEventListener('click', handleTransferAction);
 }
 
 function initImportAndReplaceTab() {
@@ -586,22 +609,22 @@ function initImportAndReplaceTab() {
     // Adiciona listeners específicos
      const subNavButtonsImport = document.querySelectorAll('#content-importacao .sub-nav-btn');
      subNavButtonsImport.forEach(button => {
-         button.addEventListener('click', handleImportSubTabSwitch); // Criar handle...
+         button.addEventListener('click', handleImportSubTabSwitch);
      });
      // Sub-aba Substituir
-     document.getElementById('preview-replace-btn')?.addEventListener('click', handlePreviewReplace); // Criar handle...
-     document.getElementById('replace-confirm-checkbox')?.addEventListener('change', handleReplaceConfirmChange); // Criar handle...
-     document.getElementById('confirm-replace-btn')?.addEventListener('click', handleConfirmReplace); // Criar handle...
+     document.getElementById('preview-replace-btn')?.addEventListener('click', handlePreviewReplace);
+     document.getElementById('replace-confirm-checkbox')?.addEventListener('change', handleReplaceConfirmChange);
+     document.getElementById('confirm-replace-btn')?.addEventListener('click', handleConfirmReplace);
      // Sub-aba Editar por Descrição
-     document.getElementById('preview-edit-by-desc-btn')?.addEventListener('click', handlePreviewEditByDesc); // Criar handle...
-     document.getElementById('edit-by-desc-preview-table-container')?.addEventListener('change', handleEditByDescCheckboxChange); // Criar handle...
-     document.getElementById('confirm-edit-by-desc-btn')?.addEventListener('click', handleConfirmEditByDesc); // Criar handle...
+     document.getElementById('preview-edit-by-desc-btn')?.addEventListener('click', handlePreviewEditByDesc);
+     document.getElementById('edit-by-desc-preview-table-container')?.addEventListener('change', handleEditByDescCheckboxChange);
+     document.getElementById('confirm-edit-by-desc-btn')?.addEventListener('click', handleConfirmEditByDesc);
      // Sub-aba Importar por Tombamento
-     document.getElementById('mass-transfer-search-btn')?.addEventListener('click', handleMassTransferSearch); // Criar handle...
-     document.getElementById('mass-transfer-set-all-status')?.addEventListener('change', handleMassTransferSetAllStatus); // Criar handle...
-     document.getElementById('mass-transfer-confirm-btn')?.addEventListener('click', handleMassTransferConfirm); // Criar handle...
+     document.getElementById('mass-transfer-search-btn')?.addEventListener('click', handleMassTransferSearch);
+     document.getElementById('mass-transfer-set-all-status')?.addEventListener('change', handleMassTransferSetAllStatus);
+     document.getElementById('mass-transfer-confirm-btn')?.addEventListener('click', handleMassTransferConfirm);
      // Sub-aba Adicionar Unidade GIAP
-     document.getElementById('save-giap-unit-btn')?.addEventListener('click', handleSaveGiapUnit); // Criar handle...
+     document.getElementById('save-giap-unit-btn')?.addEventListener('click', handleSaveGiapUnit);
 }
 
 function initNfTab() {
@@ -616,7 +639,7 @@ function initNfTab() {
     document.getElementById('nf-status-filter')?.addEventListener('change', renderNfList);
     document.getElementById('nf-date-start')?.addEventListener('change', renderNfList);
     document.getElementById('nf-date-end')?.addEventListener('change', renderNfList);
-    document.getElementById('clear-nf-filters-btn')?.addEventListener('click', handleClearNfFilters); // Criar handle...
+    document.getElementById('clear-nf-filters-btn')?.addEventListener('click', handleClearNfFilters);
 }
 
 function initGiapTab() {
@@ -771,7 +794,6 @@ function renderEditableTable() {
     });
 
     // Limpar e inserir de uma vez (super rápido)
-    // Usar requestAnimationFrame pode suavizar a renderização visual, especialmente com muitos itens
     requestAnimationFrame(() => {
         domCache.editTableBody.innerHTML = '';
         domCache.editTableBody.appendChild(fragment);
@@ -848,23 +870,48 @@ function handleTableInput(e) {
     const currentItemState = dirtyItems.get(itemId) || item;
 
     // Verifica se houve mudança real (comparando com o estado atual, seja original ou já modificado)
-    if (currentItemState[fieldName] !== newValue) {
+    // Converte para string para comparação mais robusta (evita problemas com tipos numéricos vs string)
+    const currentValueStr = (currentItemState[fieldName] === null || currentItemState[fieldName] === undefined) ? '' : String(currentItemState[fieldName]);
+    const newValueStr = (newValue === null || newValue === undefined) ? '' : String(newValue);
+
+    if (currentValueStr !== newValueStr) {
         const updatedItem = { ...currentItemState, [fieldName]: newValue };
         dirtyItems.set(itemId, updatedItem);
         field.closest('tr').classList.add('edited-row');
         updatePaginationControls();
+         console.log(`Item ${itemId} marked dirty. Field: ${fieldName}, New Value: ${newValue}`);
     } else {
-         // Se voltou ao valor original (comparado ao item base), remove do dirtyItems
-         // ATENÇÃO: Esta lógica pode ser complexa se houver múltiplas edições.
-         // Uma abordagem mais simples é apenas marcar como sujo na primeira mudança.
-         // Para simplificar, vamos manter a lógica atual: qualquer input marca como 'dirty'.
-         // A verificação se o valor final é igual ao original pode ser feita no save, se necessário.
-         const updatedItem = { ...currentItemState, [fieldName]: newValue };
-         dirtyItems.set(itemId, updatedItem); // Garante que está no map
-         field.closest('tr').classList.add('edited-row');
-         updatePaginationControls();
+        // Se voltou ao valor original REAL do inventário, remove do dirty
+        const originalItem = fullInventory.find(i => i.id === itemId);
+        const originalValueStr = (originalItem[fieldName] === null || originalItem[fieldName] === undefined) ? '' : String(originalItem[fieldName]);
+
+        if (newValueStr === originalValueStr) {
+            // Verifica se há outras alterações pendentes para este item
+            const otherChangesExist = Object.keys(dirtyItems.get(itemId) || {}).some(key =>
+                key !== fieldName && key !== 'id' && // Ignora o próprio campo e o id
+                String(dirtyItems.get(itemId)[key]) !== String(originalItem[key])
+            );
+
+            if (!otherChangesExist) {
+                dirtyItems.delete(itemId);
+                field.closest('tr').classList.remove('edited-row');
+                 console.log(`Item ${itemId} reverted to original state and removed from dirty list.`);
+            } else {
+                // Remove apenas a alteração deste campo do objeto 'dirty'
+                 const currentDirty = dirtyItems.get(itemId);
+                 delete currentDirty[fieldName]; // Remove a chave se voltou ao original
+                 dirtyItems.set(itemId, currentDirty); // Atualiza o map
+                 console.log(`Field ${fieldName} reverted on item ${itemId}, but other changes remain.`);
+            }
+        } else {
+             // O valor ainda é diferente do original, mas igual ao estado 'dirty' anterior. Mantém sujo.
+             // (Este caso pode acontecer se o usuário digitar algo e apagar voltando ao valor sujo anterior)
+             field.closest('tr').classList.add('edited-row'); // Garante que a linha fique amarela
+        }
+        updatePaginationControls();
     }
 }
+
 
 // Handler separado para click
 function handleTableClick(e) {
@@ -897,20 +944,39 @@ async function saveAllChanges() {
 
             chunk.forEach(itemWithChanges => {
                 const docRef = doc(db, 'patrimonio', itemWithChanges.id);
-                // Limpa o ID antes de salvar para não dar erro no firestore
-                const { id, createdAt, ...dataToSave } = itemWithChanges; // Remove id e createdAt (imutável)
-                // Garante que todos os campos sejam strings ou tipos válidos antes de salvar
-                const sanitizedData = Object.entries(dataToSave).reduce((acc, [key, value]) => {
-                    // Trata especificamente campos que podem ser números ou datas se necessário
-                    // Por padrão, converte null/undefined para string vazia
-                    acc[key] = (value === null || value === undefined) ? '' : value;
-                    return acc;
-                }, {});
+                // Pega o item ORIGINAL para comparar
+                const originalItem = fullInventory.find(i => i.id === itemWithChanges.id);
+                if (!originalItem) {
+                     console.warn(`Item original ${itemWithChanges.id} não encontrado para salvar.`);
+                     return; // Pula este item se o original não existe mais
+                }
 
-                chunkBatch.update(docRef, {
-                    ...sanitizedData,
-                    updatedAt: serverTimestamp() // Atualiza timestamp
-                });
+                // Cria um objeto APENAS com os campos que REALMENTE mudaram
+                 const changes = {};
+                 let hasChanges = false;
+                 Object.keys(itemWithChanges).forEach(key => {
+                     if (key !== 'id' && key !== 'createdAt' && key !== 'updatedAt') { // Ignora campos imutáveis
+                         // Compara string para robustez
+                         const originalValueStr = (originalItem[key] === null || originalItem[key] === undefined) ? '' : String(originalItem[key]);
+                         const newValueStr = (itemWithChanges[key] === null || itemWithChanges[key] === undefined) ? '' : String(itemWithChanges[key]);
+                         if (originalValueStr !== newValueStr) {
+                             changes[key] = itemWithChanges[key]; // Adiciona o valor alterado
+                             hasChanges = true;
+                         }
+                     }
+                 });
+
+
+                // Só atualiza se houver mudanças reais
+                if (hasChanges) {
+                     console.log(`Updating item ${itemWithChanges.id} with changes:`, changes);
+                    chunkBatch.update(docRef, {
+                        ...changes,
+                        updatedAt: serverTimestamp() // Atualiza timestamp sempre
+                    });
+                } else {
+                     console.log(`Skipping item ${itemWithChanges.id}, no effective changes detected.`);
+                }
             });
 
             await chunkBatch.commit();
@@ -918,25 +984,38 @@ async function saveAllChanges() {
             showOverlay(`Salvando: ${savedCount}/${itemsToSave.length} itens...`);
         }
 
-        // Atualizar cache local e array principal
+        // Atualizar cache local e array principal com base nos itens salvos
         await idb.transaction('rw', idb.patrimonio, async () => {
             const itemsToCache = [];
             itemsToSave.forEach(itemWithChanges => {
                 const index = fullInventory.findIndex(i => i.id === itemWithChanges.id);
                 if (index > -1) {
-                    // Mescla as mudanças no item original do inventário
-                    fullInventory[index] = { ...fullInventory[index], ...itemWithChanges };
+                     // Mescla as mudanças salvas no item original do inventário
+                     // Recria o objeto para garantir que só os campos salvos sejam atualizados
+                     const originalItem = fullInventory[index];
+                     const finalItemState = { ...originalItem }; // Começa com o original
+                     Object.keys(itemWithChanges).forEach(key => {
+                         if (key !== 'id' && key !== 'createdAt') { // Ignora imutáveis
+                              const originalValueStr = (originalItem[key] === null || originalItem[key] === undefined) ? '' : String(originalItem[key]);
+                              const newValueStr = (itemWithChanges[key] === null || itemWithChanges[key] === undefined) ? '' : String(itemWithChanges[key]);
+                              if (originalValueStr !== newValueStr) {
+                                  finalItemState[key] = itemWithChanges[key]; // Aplica a mudança
+                              }
+                         }
+                     });
+                    fullInventory[index] = finalItemState; // Atualiza no array principal
                     itemsToCache.push(fullInventory[index]); // Adiciona item atualizado para cache
                 }
             });
             if (itemsToCache.length > 0) {
                 await idb.patrimonio.bulkPut(itemsToCache);
+                 console.log(`${itemsToCache.length} items updated in cache.`);
             }
         });
 
         dirtyItems.clear(); // Limpa apenas após sucesso
         hideOverlay();
-        showNotification(`✅ ${itemsCount} itens salvos com sucesso!`, 'success');
+        showNotification(`✅ ${itemsCount} itens processados e salvos com sucesso!`, 'success');
 
         // Re-renderizar para remover marcações de edição
         renderEditableTable();
@@ -998,18 +1077,18 @@ async function confirmDeleteItems() {
         // Atualizar localmente
         const idsToDeleteSet = new Set(currentDeleteItemIds);
         fullInventory = fullInventory.filter(item => !idsToDeleteSet.has(item.id));
-        // Recalcula filteredInventory baseado no fullInventory atualizado
-        applyFiltersAndPaginate(); // Isso já re-renderiza a tabela
-
         await idb.patrimonio.bulkDelete(currentDeleteItemIds);
 
         // Limpar alterações pendentes dos itens deletados
         currentDeleteItemIds.forEach(id => dirtyItems.delete(id));
 
+         // Recalcula filteredInventory baseado no fullInventory atualizado E re-renderiza
+        applyFiltersAndPaginate();
+
         hideOverlay();
         closeDeleteConfirmModal();
         showNotification(`✅ ${count} itens excluídos!`, 'success');
-        // applyFiltersAndPaginate(); // Chamada redundante, já feita acima
+
     } catch (error) {
         hideOverlay();
         showNotification(`❌ Erro ao excluir: ${error.message}`, 'error');
@@ -1019,6 +1098,22 @@ async function confirmDeleteItems() {
 
 // --- FIM: SEÇÃO ULTRA OTIMIZADA (Funções coladas) ---
 
+// --- Handlers do Modal Descrição (Definição movida para cá) ---
+function handleDescChoiceKeep() {
+     addLinkToCreate(false);
+    closeDescriptionChoiceModal();
+}
+function handleDescChoiceUpdate() {
+     addLinkToCreate(true);
+    closeDescriptionChoiceModal();
+}
+function handleDescChoiceCancel() {
+     selSys = selGiap = null;
+    document.querySelectorAll('.reconciliation-list-item.selected').forEach(el => el.classList.remove('selected'));
+    closeDescriptionChoiceModal();
+}
+// --- FIM Handlers Modal Descrição ---
+
 
 // --- SEÇÃO ORIGINAL MANTIDA (Outras Abas) ---
 // (Cole as funções originais aqui, ajustando nomes se necessário para evitar conflitos)
@@ -1027,7 +1122,7 @@ function populateUnitMappingTab() {
     // ... (código original mantido)
     const systemTypes = [...new Set(fullInventory.map(i => i.Tipo).filter(Boolean))].sort();
     const mapFilterTipo = document.getElementById('map-filter-tipo');
-    mapFilterTipo.innerHTML = '<option value="">Todos os Tipos</option>' + systemTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+    if(mapFilterTipo) mapFilterTipo.innerHTML = '<option value="">Todos os Tipos</option>' + systemTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
     updateSystemUnitOptions();
     renderSavedMappings();
     updateGiapUnitOptions();
@@ -1214,18 +1309,1645 @@ function populatePendingTransfersTab() {
     }
 }
 
-// parsePtBrDate, populateNfTab, renderNfList, populateGiapTab,
-// populateImportAndReplaceTab, populateReconciliationTab, renderList,
-// getGlobalLeftovers, getConciliationData, handleSelect, updateImportButton,
-// clearGiapImportSelection, addLinkToCreate, renderCreatedLinks,
-// renderConciliationLists, openDescriptionChoiceModal, closeDescriptionChoiceModal,
-// renderItensATombar, populateSobrantesTab, getFilteredSobrantes,
-// renderSobrantesConciliation, findBestMatchForItem, renderEditByDescPreview
-// ... (Colar o restante das funções originais aqui, verificando se os IDs dos elementos ainda são válidos)
+function parsePtBrDate(dateStr) {
+    // ... (código original mantido)
+    if (!dateStr || typeof dateStr !== 'string') return new Date(0);
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+        // Assume DD/MM/YYYY
+        const year = parseInt(parts[2], 10);
+        // Heurística simples para ano com 2 dígitos
+        const fullYear = year < 100 ? (year > 50 ? 1900 + year : 2000 + year) : year;
+        return new Date(fullYear, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    }
+    const isoParts = dateStr.split('-'); // Assume YYYY-MM-DD
+    if(isoParts.length === 3) {
+        return new Date(parseInt(isoParts[0], 10), parseInt(isoParts[1], 10) - 1, parseInt(isoParts[2], 10));
+    }
+     // Tenta analisar como data/hora padrão JS se os formatos esperados falharem
+    const parsedDate = new Date(dateStr);
+    return isNaN(parsedDate) ? new Date(0) : parsedDate;
+}
 
-// --- Handlers ---
-// (Colar todos os handlers originais aqui, como handleSaveMapping, handleTransferAction, etc.)
+
+function populateNfTab() {
+    // ... (código original mantido)
+    if (giapInventory.length === 0) return;
+
+    const giapWithNf = giapInventory
+        .filter(item => item.NF && item.NF.trim() !== '')
+        .sort((a, b) => {
+            const dateA = parsePtBrDate(a.Cadastro);
+            const dateB = parsePtBrDate(b.Cadastro);
+            // Ordena decrescente por data (mais recente primeiro)
+            return dateB - dateA;
+        });
+
+
+    processedNfData = giapWithNf.reduce((acc, item) => {
+        const nf = item.NF.trim();
+        if (!acc[nf]) {
+            acc[nf] = {
+                items: [],
+                fornecedor: item['Nome Fornecedor'] || 'Não especificado',
+                tipoEntrada: item['Tipo Entrada'] || 'N/A',
+                dataCadastro: item.Cadastro
+            };
+        }
+        acc[nf].items.push(item);
+        return acc;
+    }, {});
+
+    const allStatuses = [...new Set(giapInventory.map(item => (item.Status || '').trim()).filter(Boolean))].sort();
+    const statusFilterEl = document.getElementById('nf-status-filter');
+    if (statusFilterEl) {
+        statusFilterEl.innerHTML = '<option value="">Todos os Status</option>' + allStatuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+    }
+
+    renderNfList();
+}
+
+function renderNfList() {
+    // ... (código original mantido)
+    const container = document.getElementById('notas-fiscais-container');
+    if (!container) return; // Verifica
+    container.innerHTML = '';
+    const tomboMap = new Map(fullInventory.map(item => [item.Tombamento?.trim(), item]));
+
+    const nfSearchTerm = document.getElementById('nf-search')?.value.toLowerCase() || '';
+    const nfItemSearchTerm = document.getElementById('nf-item-search')?.value.toLowerCase() || '';
+    const nfFornecedorTerm = document.getElementById('nf-fornecedor-search')?.value.toLowerCase() || '';
+    const nfTipoEntrada = document.getElementById('nf-tipo-entrada')?.value || '';
+    const nfStatusFilter = document.getElementById('nf-status-filter')?.value || '';
+    const startDateStr = document.getElementById('nf-date-start')?.value || '';
+    const endDateStr = document.getElementById('nf-date-end')?.value || '';
+
+
+    // Correção: Datas devem ser comparadas como objetos Date
+    const startDate = startDateStr ? new Date(startDateStr + 'T00:00:00') : null; // Adiciona hora para evitar problemas de fuso
+    let endDate = endDateStr ? new Date(endDateStr + 'T23:59:59') : null; // Adiciona hora para incluir o dia inteiro
+
+
+    const filteredNfs = Object.keys(processedNfData).filter(nf => {
+        const nfGroup = processedNfData[nf];
+        if (nfSearchTerm && !nf.toLowerCase().includes(nfSearchTerm)) return false;
+        if (nfFornecedorTerm && !(nfGroup.fornecedor || '').toLowerCase().includes(nfFornecedorTerm)) return false;
+        if (nfItemSearchTerm) {
+            if (!nfGroup.items.some(item => (item.Descrição || '').toLowerCase().includes(nfItemSearchTerm) || (item.Espécie || '').toLowerCase().includes(nfItemSearchTerm))) return false;
+        }
+        if (nfTipoEntrada && (nfGroup.tipoEntrada || '').trim() !== nfTipoEntrada) return false;
+        if (nfStatusFilter) {
+            // Filtra o grupo se *nenhum* item dentro dele corresponder ao status
+            if (!nfGroup.items.some(item => (item.Status || '').trim() === nfStatusFilter)) return false;
+        }
+        const nfDate = parsePtBrDate(nfGroup.dataCadastro);
+        if (startDate && nfDate < startDate) return false;
+        if (endDate && nfDate > endDate) return false; // Ajustado para >
+        return true;
+    });
+
+     // Ordena as NFs filtradas pela data de cadastro (mais recentes primeiro)
+     filteredNfs.sort((nfA, nfB) => {
+         const dateA = parsePtBrDate(processedNfData[nfA].dataCadastro);
+         const dateB = parsePtBrDate(processedNfData[nfB].dataCadastro);
+         return dateB - dateA;
+     });
+
+
+    if (filteredNfs.length === 0) {
+        container.innerHTML = `<p class="text-slate-500 text-center p-4">Nenhuma nota fiscal encontrada com os filtros aplicados.</p>`;
+        return;
+    }
+
+    const categorizedNfs = filteredNfs.reduce((acc, nfKey) => {
+        const nfGroup = processedNfData[nfKey];
+        const category = nfGroup.tipoEntrada || 'Outros';
+        if (!acc[category]) acc[category] = [];
+        acc[category].push(nfKey);
+        return acc;
+    }, {});
+
+    Object.keys(categorizedNfs).sort().forEach(category => {
+        const categoryHeader = document.createElement('h3');
+        categoryHeader.className = 'text-lg font-bold text-slate-700 p-2 bg-slate-100 rounded-t-lg mt-6 first:mt-0';
+        categoryHeader.textContent = category;
+        container.appendChild(categoryHeader);
+        categorizedNfs[category].forEach(nf => { // Já está ordenado por data dentro de filteredNfs
+            let totalNfValue = 0;
+            const nfGroup = processedNfData[nf];
+            const nfDetails = document.createElement('details');
+            nfDetails.className = 'bg-white rounded-lg shadow-sm border mb-3 border-t-0 rounded-t-none';
+            nfDetails.open = false;
+
+            const itemSummaryText = nfGroup.items.slice(0, 2).map(i => escapeHtml(i.Descrição || i.Espécie)).join(', ') + (nfGroup.items.length > 2 ? '...' : '');
+
+            nfDetails.innerHTML = `
+                <summary class="p-4 font-semibold cursor-pointer grid grid-cols-1 md:grid-cols-3 gap-4 items-center hover:bg-slate-50">
+                    <div class="md:col-span-2">
+                        <p class="text-xs text-slate-500">NF: <strong class="text-blue-700 text-sm">${escapeHtml(nf)}</strong> | Fornecedor: <strong>${escapeHtml(nfGroup.fornecedor)}</strong></p>
+                        <p class="text-xs text-slate-500 mt-1 truncate">Itens: ${itemSummaryText}</p>
+                    </div>
+                    <div><p class="text-xs text-slate-500">Data Cadastro</p><strong>${escapeHtml(nfGroup.dataCadastro)}</strong></div>
+                </summary>
+            `;
+
+            const itemsListContainer = document.createElement('div');
+            itemsListContainer.className = 'p-4 border-t border-slate-200 space-y-2';
+
+            // Filtra os itens *dentro* da NF se um filtro de status foi aplicado
+             const itemsToDisplay = nfStatusFilter
+                ? nfGroup.items.filter(item => (item.Status || '').trim() === nfStatusFilter)
+                : nfGroup.items;
+
+
+            itemsToDisplay.forEach(item => {
+                totalNfValue += parseCurrency(item['Valor NF']);
+                const tombo = item.TOMBAMENTO?.trim();
+                const allocatedItem = tombo ? tomboMap.get(tombo) : undefined;
+                const status = item.Status || 'N/D';
+                const isAvailableForUse = normalizeStr(status).includes(normalizeStr('disponível'));
+
+                let itemClass = allocatedItem ? 'bg-green-50 border-green-200' : (isAvailableForUse ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-100 opacity-60');
+                let allocationHtml = allocatedItem
+                    ? `<div><p class="px-2 py-1 text-xs font-bold text-green-800 bg-green-200 rounded-full text-center">ENCONTRADO</p><p class="text-xs text-slate-600 mt-1 text-right">→ <strong>${escapeHtml(allocatedItem.Unidade)}</strong></p><p class="text-xs text-slate-500 mt-1 text-right">(${escapeHtml(allocatedItem.Estado)})</p></div>`
+                    : `<p class="px-2 py-1 text-xs font-semibold ${isAvailableForUse ? 'text-yellow-800 bg-yellow-100' : 'text-slate-700 bg-slate-200'} rounded-full text-center">NÃO ALOCADO</p>`;
+                let statusHtml = `<span class="px-2 py-1 text-xs font-semibold rounded-full ${isAvailableForUse ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}">${isAvailableForUse ? 'Disponível para uso' : `Indisponível (${escapeHtml(status)})`}</span>`;
+
+                itemsListContainer.innerHTML += `
+                    <div class="p-3 border rounded-md flex justify-between items-start gap-4 ${itemClass}">
+                        <div class="flex-1"><p class="font-bold text-slate-800 ${!allocatedItem && !isAvailableForUse ? 'line-through' : ''}">${escapeHtml(item.Descrição || item.Espécie)}</p><p class="text-sm text-slate-500">Tombamento: <span class="font-mono">${escapeHtml(tombo || 'N/D')}</span></p></div>
+                        <div class="text-right"><p class="text-xs text-slate-500">Valor</p><p class="font-semibold text-green-700">${parseCurrency(item['Valor NF']).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p></div>
+                        <div class="text-right ml-4 space-y-1.5 min-w-[150px]">${statusHtml}${allocationHtml}</div>
+                    </div>
+                `;
+            });
+
+            // Mostra o total da NF apenas se todos os itens estiverem sendo exibidos
+            if (itemsToDisplay.length === nfGroup.items.length) {
+                itemsListContainer.innerHTML += `<div class="p-3 border-t-2 mt-2 font-bold text-slate-800 flex justify-between items-center"><span>VALOR TOTAL DA NOTA</span><span>${totalNfValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>`;
+            }
+
+
+            nfDetails.appendChild(itemsListContainer);
+            container.appendChild(nfDetails);
+        });
+    });
+}
+
+
+function populateGiapTab() {
+    // ... (código original mantido)
+    const giapTableBody = document.getElementById('giap-table-body');
+     if (!giapTableBody) return; // Verifica
+    const headers = ['TOMBAMENTO', 'Descrição', 'Unidade', 'Status', 'Alocação', 'Cadastro', 'NF', 'Nome Fornecedor'];
+    const thead = giapTableBody.closest('table').querySelector('thead tr');
+    if (thead) thead.innerHTML = headers.map(h => `<th class="p-3 text-left font-semibold">${h}</th>`).join('');
+
+    const tomboMap = new Map(fullInventory.map(item => [normalizeTombo(item.Tombamento), item]));
+
+    giapTableBody.innerHTML = giapInventory.map(item => {
+        const tombo = normalizeTombo(item.TOMBAMENTO);
+        const allocatedItem = tomboMap.get(tombo);
+
+        let alocacaoHtml = `<span class="px-2 py-1 text-xs font-semibold text-yellow-800 bg-yellow-100 rounded-full">Não Alocado</span>`;
+        if (allocatedItem) {
+            alocacaoHtml = `<span class="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">Alocado em: <strong>${escapeHtml(allocatedItem.Unidade)}</strong></span>`;
+        }
+
+        const cells = {
+            'TOMBAMENTO': escapeHtml(item.TOMBAMENTO),
+            'Descrição': escapeHtml(item.Descrição),
+            'Unidade': escapeHtml(item.Unidade),
+            'Status': escapeHtml(item.Status),
+            'Alocação': alocacaoHtml,
+            'Cadastro': escapeHtml(item.Cadastro),
+            'NF': escapeHtml(item.NF),
+            'Nome Fornecedor': escapeHtml(item['Nome Fornecedor'])
+        };
+
+        return `<tr class="border-b hover:bg-slate-50">${headers.map(h => `<td class="p-2">${cells[h] || ''}</td>`).join('')}</tr>`;
+    }).join('');
+}
+
+function populateImportAndReplaceTab() {
+    // ... (código original mantido)
+    const tipos = [...new Set(fullInventory.map(item => item.Tipo).filter(Boolean))].sort();
+
+    const selects = [
+        document.getElementById('mass-transfer-tipo'),
+        document.getElementById('replace-tipo'),
+        document.getElementById('edit-by-desc-tipo')
+    ];
+
+    selects.forEach(select => {
+        if(select) select.innerHTML = '<option value="">Selecione um Tipo</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+    });
+
+    const setupUnitSelect = (tipoSelectId, unitSelectId) => {
+         const tipoSelect = document.getElementById(tipoSelectId);
+         if (!tipoSelect) return; // Adiciona verificação
+         tipoSelect.addEventListener('change', () => {
+            const selectedTipo = tipoSelect.value;
+            const unitSelect = document.getElementById(unitSelectId);
+            if (!unitSelect) return; // Adiciona verificação
+            if (!selectedTipo) {
+                unitSelect.innerHTML = '<option value="">Selecione um Tipo primeiro</option>'; // Mensagem clara
+                unitSelect.disabled = true;
+                return;
+            }
+            const unidades = [...new Set(fullInventory.filter(i => i.Tipo === selectedTipo).map(i => i.Unidade).filter(Boolean))].sort();
+            unitSelect.innerHTML = '<option value="">Selecione uma Unidade</option>' + unidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+            unitSelect.disabled = false;
+        });
+        // Garante que o select de unidade comece desabilitado
+        const unitSelectInitial = document.getElementById(unitSelectId);
+         if(unitSelectInitial) {
+             unitSelectInitial.innerHTML = '<option value="">Selecione um Tipo primeiro</option>';
+             unitSelectInitial.disabled = true;
+         }
+    };
+
+    setupUnitSelect('mass-transfer-tipo', 'mass-transfer-unit');
+    setupUnitSelect('replace-tipo', 'replace-unit');
+    setupUnitSelect('edit-by-desc-tipo', 'edit-by-desc-unit');
+}
+
+function populateReconciliationTab() {
+    // ... (código original mantido)
+    const tipos = [...new Set(fullInventory.map(item => item.Tipo).filter(Boolean))].sort();
+    const sel = document.getElementById('filter-tipo');
+    if (sel) sel.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+
+    const tombarFilterTipo = document.getElementById('tombar-filter-tipo');
+     if (tombarFilterTipo) tombarFilterTipo.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+
+    // Garante que o select de unidade comece desabilitado
+    const selU = document.getElementById('filter-unidade');
+    if (selU) {
+        selU.innerHTML = '<option value="">Selecione um Tipo primeiro</option>';
+        selU.disabled = true;
+    }
+    const selUTombar = document.getElementById('tombar-filter-unidade');
+    if (selUTombar) {
+        selUTombar.innerHTML = '<option value="">Selecione um Tipo primeiro</option>';
+        selUTombar.disabled = true;
+    }
+}
+
+
+function renderList(containerId, arr, keyField, primaryLabelField, suggestionInfo = null, context = 'default') {
+    // ... (código original mantido)
+    const container = document.getElementById(containerId);
+    if (!container) return; // Adiciona verificação
+    container.innerHTML = '';
+    if (!arr || arr.length === 0) {
+        container.innerHTML = `<p class="p-4 text-slate-500 text-center">Nenhum item encontrado.</p>`;
+        return;
+    }
+    arr.forEach((item, index) => {
+        const id = item[keyField];
+         if (id === undefined || id === null) {
+             console.warn("Item skipped in renderList due to missing keyField:", item);
+             return; // Pula itens sem ID/Tombo
+         }
+        const div = document.createElement('div');
+        div.className = 'reconciliation-list-item card p-2 text-sm';
+        div.dataset.id = id;
+
+        let detailsHtml = '';
+        if (containerId.includes('system-list')) { // Itens S/T do Sistema
+             detailsHtml = `
+                <strong>${escapeHtml(item[primaryLabelField] || 'Sem Descrição')}</strong>
+                <p class="text-xs text-slate-500 mt-1">Fornecedor: ${escapeHtml(item.Fornecedor || 'N/D')} | Estado: <strong>${escapeHtml(item.Estado || 'N/A')}</strong></p>
+                <p class="text-xs text-slate-400 mt-1">Obs: ${escapeHtml(item.Observação || 'Nenhuma')}</p>
+            `;
+        } else { // Itens Tombados (GIAP)
+             const valorNFFormatado = parseCurrency(item['Valor NF']).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+             detailsHtml = `
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <strong>${escapeHtml(item[keyField])} - ${escapeHtml(item.Descrição || item.Espécie || 'N/A')}</strong>
+                        <p class="text-xs text-slate-500 mt-1">Cadastro: <strong>${escapeHtml(item.Cadastro || 'N/D')}</strong> | NF: <strong>${escapeHtml(item['NF'] || 'N/A')}</strong></p>
+                        <p class="text-xs text-slate-500 mt-1">Fornecedor: <strong>${escapeHtml(item['Nome Fornecedor'] || 'N/D')}</strong></p>
+                    </div>
+                    <div class="text-right ml-2"><p class="text-xs text-slate-500">Valor NF</p><strong class="text-sm text-green-700">${valorNFFormatado}</strong></div>
+                </div>`;
+            if (context === 'sobras') {
+                 detailsHtml += `<p class="text-xs text-blue-600 font-semibold mt-1">Unidade GIAP Original: ${escapeHtml(item.Unidade || 'N/A')}</p>`;
+            }
+        }
+
+        div.innerHTML = detailsHtml;
+
+        // Aplica estilo de sugestão
+        if (suggestionInfo && suggestionInfo.suggestions.has(id)) {
+            const score = suggestionInfo.suggestions.get(id);
+             // Destaca a melhor sugestão com score alto, outras sugestões boas com cor diferente
+             if (index === 0 && score >= 0.75) {
+                 div.style.backgroundColor = '#dbeafe'; // Azul claro forte
+                 div.style.borderLeft = '4px solid #2563eb'; // Azul forte
+             } else if (score >= 0.60) { // Limiar mais baixo para sugestões secundárias
+                 div.style.backgroundColor = '#e0f2fe'; // Azul claro mais suave
+                 div.style.borderLeft = '4px solid #7dd3fc'; // Azul mais suave
+             }
+        }
+
+        div.onclick = (event) => handleSelect(containerId, id, item, event.currentTarget);
+        container.append(div);
+    });
+}
+
+function getGlobalLeftovers() {
+    // ... (código original mantido)
+    const usedTombamentos = new Set(fullInventory.map(i => normalizeTombo(i.Tombamento)).filter(Boolean));
+    linksToCreate.forEach(link => usedTombamentos.add(normalizeTombo(link.giapItem.TOMBAMENTO)));
+
+    return giapInventory.filter(g => {
+        const tombo = normalizeTombo(g.TOMBAMENTO);
+        // Garante que o status 'Disponível' seja verificado corretamente
+        const statusOK = g.Status && normalizeStr(g.Status).includes(normalizeStr('Disponível'));
+        return tombo && !tombo.includes('permuta') && !usedTombamentos.has(tombo) && statusOK;
+    });
+}
+
+
+function getConciliationData() {
+    // ... (código original mantido)
+    const unidade = document.getElementById('filter-unidade').value.trim();
+    if (!unidade) return { systemItems: [], giapItems: [] };
+
+    const systemFilterText = normalizeStr(document.getElementById('system-list-filter').value);
+    const giapFilterText = normalizeStr(document.getElementById('giap-list-filter').value);
+
+    const usedTombamentos = new Set(fullInventory.map(i => normalizeTombo(i.Tombamento)).filter(Boolean));
+    linksToCreate.forEach(link => usedTombamentos.add(normalizeTombo(link.giapItem.TOMBAMENTO)));
+
+    const mappedGiapUnits = unitMapping[unidade] || [unidade];
+    const mappedGiapUnitsNormalized = mappedGiapUnits.map(normalizeStr); // Normaliza unidades mapeadas
+
+    const systemItems = fullInventory.filter(i => {
+        const tombo = (i.Tombamento || '').trim().toLowerCase();
+        const isPending = linksToCreate.some(l => l.systemItem.id === i.id);
+        return !isPending &&
+               !i.isPermuta && // <-- EXCLUI PERMUTA
+               i.Unidade === unidade &&
+               (tombo === '' || tombo === 's/t') &&
+               normalizeStr(i.Descrição || '').includes(systemFilterText); // Adiciona fallback para Descrição
+    });
+
+    const giapItems = giapInventory.filter(g => {
+        const tomboTrimmed = normalizeTombo(g.TOMBAMENTO);
+        const giapDesc = normalizeStr(g.Descrição || g.Espécie || ''); // Adiciona fallback
+         const statusOK = g.Status && normalizeStr(g.Status).includes(normalizeStr('Disponível')); // Verifica status
+         const unitMatch = g.Unidade && mappedGiapUnitsNormalized.includes(normalizeStr(g.Unidade)); // Compara unidades normalizadas
+        return tomboTrimmed &&
+               !usedTombamentos.has(tomboTrimmed) &&
+               unitMatch && // Verifica correspondência de unidade
+               statusOK && // Verifica status
+               giapDesc.includes(giapFilterText);
+    });
+
+    return { systemItems, giapItems };
+}
+
+
+function handleSelect(containerId, id, obj, element) {
+    // ... (código original mantido)
+    if (element.classList.contains('linked')) return;
+
+    const activeTabEl = document.querySelector('#content-conciliar .sub-nav-btn.active');
+    const activeSubTab = activeTabEl ? activeTabEl.dataset.subtabConciliar : 'conciliacao_unidade';
+    const isSobrantesTab = activeSubTab === 'conciliacao_sobras';
+
+    const systemListSelector = isSobrantesTab ? '#sobras-system-list' : '#system-list';
+    const giapListSelector = isSobrantesTab ? '#sobras-giap-list' : '#giap-list';
+
+
+    if (containerId.includes('system-list')) { // Se clicou na lista do Sistema (S/T)
+        clearGiapImportSelection(); // Limpa seleção de importação (se houver)
+        selSys = { id, obj };
+        selGiap = null; // Reseta seleção GIAP
+
+        // Limpa seleção visual em ambas as listas GIAP e marca o item clicado
+        document.querySelectorAll(`${giapListSelector} .selected, ${giapListSelector} .selected-for-import`).forEach(el => el.classList.remove('selected', 'selected-for-import'));
+        document.querySelectorAll(`${systemListSelector} .selected`).forEach(el => el.classList.remove('selected'));
+        element.classList.add('selected');
+
+        // Busca sugestões na lista GIAP correspondente
+        const giapSourceItems = isSobrantesTab ? getFilteredSobrantes() : getConciliationData().giapItems;
+        suggestGiapMatchesComAprendizado(obj, giapSourceItems);
+
+    } else if (containerId.includes('giap-list') && selSys) { // Se clicou na lista GIAP e JÁ TEM um item do sistema selecionado
+        selGiap = { tomb: id, obj }; // Define o item GIAP selecionado
+        // Limpa seleção visual na lista GIAP e marca o item clicado
+        document.querySelectorAll(`${giapListSelector} .selected, ${giapListSelector} .selected-for-import`).forEach(el => el.classList.remove('selected', 'selected-for-import'));
+        element.classList.add('selected');
+        openDescriptionChoiceModal(); // Abre o modal para escolher a descrição
+
+    } else if (containerId.includes('giap-list') && !selSys && !isSobrantesTab) { // Se clicou na lista GIAP SEM item do sistema selecionado (e não está na aba Sobras) -> MODO IMPORTAÇÃO
+        element.classList.toggle('selected-for-import'); // Alterna a classe de seleção para importação
+        const index = giapItemsForImport.findIndex(item => item.TOMBAMENTO === id);
+        if (index > -1) {
+            giapItemsForImport.splice(index, 1); // Remove se já estava selecionado
+        } else {
+            giapItemsForImport.push(obj); // Adiciona se não estava
+        }
+        updateImportButton(); // Atualiza o botão de importação
+    } else if (containerId.includes('giap-list') && !selSys && isSobrantesTab) {
+         // Na aba Sobras, clicar num item GIAP sem item de sistema selecionado não faz nada (ou poderia mostrar detalhes?)
+         console.log("Selecionado item GIAP sobrando:", obj);
+         // Limpa seleção visual e marca o clicado (apenas visual)
+         document.querySelectorAll(`${giapListSelector} .selected, ${giapListSelector} .selected-for-import`).forEach(el => el.classList.remove('selected', 'selected-for-import'));
+         element.classList.add('selected');
+         selGiap = { tomb: id, obj }; // Guarda a seleção caso o próximo clique seja no sistema
+    } else if (containerId.includes('system-list') && selGiap && isSobrantesTab) {
+         // Clicou num item do sistema DEPOIS de clicar num GIAP sobrando
+         selSys = { id, obj };
+         document.querySelectorAll(`${systemListSelector} .selected`).forEach(el => el.classList.remove('selected'));
+         element.classList.add('selected');
+         openDescriptionChoiceModal(); // Abre o modal para confirmar o vínculo
+    }
+}
+
+
+function updateImportButton() {
+    // ... (código original mantido)
+    const count = giapItemsForImport.length;
+    const btn = document.getElementById('import-giap-btn');
+    const countEl = document.getElementById('giap-import-count');
+    if(countEl) countEl.textContent = count;
+    if(btn) btn.disabled = count === 0;
+}
+
+function clearGiapImportSelection() {
+    // ... (código original mantido)
+    giapItemsForImport = [];
+    document.querySelectorAll('#giap-list .selected-for-import').forEach(el => el.classList.remove('selected-for-import'));
+    updateImportButton();
+}
+
+function addLinkToCreate(useGiapDescription) {
+    // ... (código original mantido)
+    if (!selSys || !selGiap) {
+         console.error("Tentativa de criar link sem seleção completa.");
+         showNotification("Erro: Selecione um item de cada lista.", "error");
+         return;
+    }
+    const link = {
+        systemItem: selSys.obj,
+        giapItem: selGiap.obj,
+        useGiapDescription
+    };
+    linksToCreate.push(link);
+
+    const activeTabEl = document.querySelector('#content-conciliar .sub-nav-btn.active');
+    const activeSubTab = activeTabEl ? activeTabEl.dataset.subtabConciliar : 'conciliacao_unidade';
+    const isSobrantesTab = activeSubTab === 'conciliacao_sobras';
+
+    const systemListSelector = isSobrantesTab ? '#sobras-system-list' : '#system-list';
+    const giapListSelector = isSobrantesTab ? '#sobras-giap-list' : '#giap-list';
+
+
+    if(isSobrantesTab) {
+        renderCreatedLinks('sobras');
+        const systemEl = document.querySelector(`${systemListSelector} div[data-id='${selSys.id}']`);
+        if (systemEl) systemEl.classList.add('linked');
+        const giapEl = document.querySelector(`${giapListSelector} div[data-id='${selGiap.tomb}']`);
+        if (giapEl) giapEl.classList.add('linked');
+    } else {
+         renderCreatedLinks('unidade');
+        const systemEl = document.querySelector(`${systemListSelector} div[data-id='${selSys.id}']`);
+        if (systemEl) systemEl.classList.add('linked');
+        const giapEl = document.querySelector(`${giapListSelector} div[data-id='${selGiap.tomb}']`);
+        if (giapEl) giapEl.classList.add('linked');
+    }
+
+    selSys = selGiap = null; // Limpa seleções após criar o link
+    document.querySelectorAll('.reconciliation-list-item.selected').forEach(el => el.classList.remove('selected'));
+}
+
+
+function renderCreatedLinks(context = 'unidade') {
+    // ... (código original mantido)
+    const containerId = context === 'unidade' ? 'created-links' : 'sobras-created-links';
+    const container = document.getElementById(containerId);
+     if (!container) return; // Adiciona verificação
+    container.innerHTML = linksToCreate.map((link, index) => {
+        const systemDesc = link.systemItem.Descrição;
+        const giapDesc = link.giapItem.Descrição || link.giapItem.Espécie;
+        const finalDesc = link.useGiapDescription ? giapDesc : systemDesc;
+
+        return `<div class="created-link-item card link-success p-2 text-sm bg-green-50 border-l-4 border-green-500">
+                    <span>
+                        <strong>S/T:</strong> ${escapeHtml(systemDesc)} ↔
+                        <strong>Tombo:</strong> ${escapeHtml(link.giapItem.TOMBAMENTO)}<br>
+                        <span class="text-xs text-blue-700">Descrição a ser salva: "${escapeHtml(finalDesc)}"</span>
+                    </span>
+                    <button class="delete-link-btn" data-index="${index}" title="Remover Vínculo">
+                        <svg class="pointer-events-none" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                            <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3h11V2h-11v1z"/>
+                        </svg>
+                    </button>
+                </div>`;
+    }).join('');
+}
+
+function renderConciliationLists() {
+    // ... (código original mantido)
+    const unidade = document.getElementById('filter-unidade').value.trim();
+    if (!unidade) {
+        document.getElementById('system-list').innerHTML = `<p class="p-4 text-slate-500 text-center">Selecione uma unidade e clique em carregar.</p>`;
+        document.getElementById('giap-list').innerHTML = `<p class="p-4 text-slate-500 text-center">Selecione uma unidade e clique em carregar.</p>`;
+        return;
+    }
+
+    const { systemItems, giapItems } = getConciliationData();
+
+    renderList('system-list', systemItems, 'id', 'Descrição');
+    renderList('giap-list', giapItems, 'TOMBAMENTO', 'Descrição');
+}
+
+function openDescriptionChoiceModal() {
+    // ... (código original mantido)
+    if (!selSys || !selGiap) return;
+    const descChoiceModal = document.getElementById('desc-choice-modal');
+    if (!descChoiceModal) return; // Verifica
+    document.getElementById('desc-choice-tombo').textContent = selGiap.tomb;
+    document.getElementById('desc-choice-current').textContent = selSys.obj.Descrição;
+    document.getElementById('desc-choice-new').textContent = selGiap.obj.Descrição || selGiap.obj.Espécie;
+
+    descChoiceModal.classList.remove('hidden');
+}
+
+function closeDescriptionChoiceModal() {
+    // ... (código original mantido)
+     const descChoiceModal = document.getElementById('desc-choice-modal');
+    if (descChoiceModal) descChoiceModal.classList.add('hidden');
+}
+
+
+function renderItensATombar() {
+    // ... (código original mantido)
+    const container = document.getElementById('itens-a-tombar-container');
+    if (!container) return; // Verifica
+    const tipo = document.getElementById('tombar-filter-tipo').value;
+    const unidade = document.getElementById('tombar-filter-unidade').value;
+
+    const itemsPendentes = fullInventory.filter(item =>
+        item.etiquetaPendente === true &&
+        (!tipo || item.Tipo === tipo) &&
+        (!unidade || item.Unidade === unidade)
+    );
+
+    if (itemsPendentes.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 text-center p-4">Nenhum item pendente de tombamento com os filtros selecionados.</p>';
+        return;
+    }
+
+    const groupedByTipo = itemsPendentes.reduce((acc, item) => {
+        const tipoKey = item.Tipo || 'Sem Tipo';
+        if (!acc[tipoKey]) acc[tipoKey] = [];
+        acc[tipoKey].push(item);
+        return acc;
+    }, {});
+
+    let html = '';
+    for (const tipo of Object.keys(groupedByTipo).sort()) {
+        html += `<h3 class="text-lg font-bold text-slate-700 p-2 bg-slate-100 rounded-t-lg mt-4">${tipo}</h3>`;
+
+        const groupedByUnidade = groupedByTipo[tipo].reduce((acc, item) => {
+            const unidadeKey = item.Unidade || 'Sem Unidade';
+            if (!acc[unidadeKey]) acc[unidadeKey] = [];
+            acc[unidadeKey].push(item);
+            return acc;
+        }, {});
+
+        for (const unidade of Object.keys(groupedByUnidade).sort()) {
+            html += `<details class="bg-white rounded-lg shadow-sm border mb-2" open><summary class="p-4 font-semibold cursor-pointer hover:bg-slate-50">${unidade}</summary>
+                        <div class="p-2 border-t">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b"><th class="p-2 text-left">Descrição</th><th class="p-2 text-left">Novo Tombo</th><th class="p-2 text-left">Ação</th></tr></thead>
+                                <tbody>`;
+
+            groupedByUnidade[unidade].forEach(item => {
+                html += `<tr class="border-b hover:bg-green-50">
+                            <td class="p-2">${escapeHtml(item.Descrição)}</td>
+                            <td class="p-2 font-mono">${escapeHtml(item.Tombamento)}</td>
+                            <td class="p-2">
+                                <button data-id="${item.id}" class="confirmar-tombamento-btn text-xs bg-green-100 text-green-700 px-3 py-1 rounded-md hover:bg-green-200">Confirmar Tombamento</button>
+                            </td>
+                        </tr>`;
+            });
+
+            html += `</tbody></table></div></details>`;
+        }
+    }
+    container.innerHTML = html;
+}
+
+function populateSobrantesTab() {
+     // ... (código original mantido)
+    const reconciledTypes = [...new Set(fullInventory.filter(i => reconciledUnits.includes(i.Unidade)).map(i => i.Tipo).filter(Boolean))].sort();
+    const sobrasTipoSelect = document.getElementById('sobras-filter-tipo');
+    if (sobrasTipoSelect) sobrasTipoSelect.innerHTML = '<option value="">Selecione um Tipo</option>' + reconciledTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+
+    const sobrasGiapTypeSelect = document.getElementById('sobras-giap-type-filter');
+    const allTypes = [...new Set(fullInventory.map(i => i.Tipo).filter(Boolean))].sort();
+    if(sobrasGiapTypeSelect) sobrasGiapTypeSelect.innerHTML = '<option value="">Todos os Tipos</option>' + allTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+
+    if (sobrasTipoSelect) {
+        sobrasTipoSelect.onchange = () => {
+            const selectedTipo = sobrasTipoSelect.value;
+            const sobrasUnidadeSelect = document.getElementById('sobras-filter-unidade');
+
+            const unitsToShow = reconciledUnits.filter(unitName => {
+                if (!selectedTipo) return true;
+                const item = fullInventory.find(i => i.Unidade === unitName);
+                return item && item.Tipo === selectedTipo;
+            }).sort();
+
+            sobrasUnidadeSelect.innerHTML = '<option value="">Selecione uma Unidade</option>' + unitsToShow.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+            sobrasUnidadeSelect.disabled = !selectedTipo;
+        };
+    }
+
+     // Garante que o select de unidade comece desabilitado
+    const sobrasUnidadeSelectInitial = document.getElementById('sobras-filter-unidade');
+    if (sobrasUnidadeSelectInitial) {
+        sobrasUnidadeSelectInitial.innerHTML = '<option value="">Selecione um Tipo primeiro</option>';
+        sobrasUnidadeSelectInitial.disabled = true;
+    }
+
+    const sysList = document.getElementById('sobras-system-list');
+    if(sysList) sysList.innerHTML = `<p class="p-4 text-slate-500 text-center">Selecione Tipo e Unidade e clique em Carregar.</p>`;
+    const giapList = document.getElementById('sobras-giap-list');
+    if(giapList) giapList.innerHTML = `<p class="p-4 text-slate-500 text-center">Os tombos sobrando aparecerão aqui após carregar os itens do sistema.</p>`;
+}
+
+function getFilteredSobrantes() {
+     // ... (código original mantido)
+    let allLeftovers = getGlobalLeftovers();
+    const giapTypeFilterEl = document.getElementById('sobras-giap-type-filter');
+    const giapDescFilterEl = document.getElementById('sobras-giap-list-filter');
+    const giapTypeFilter = giapTypeFilterEl ? giapTypeFilterEl.value : '';
+    const giapDescFilter = giapDescFilterEl ? normalizeStr(giapDescFilterEl.value) : '';
+
+    const giapUnitToSystemType = {};
+    Object.keys(unitMapping).forEach(systemUnit => {
+        const systemUnitType = (fullInventory.find(i => i.Unidade === systemUnit) || {}).Tipo;
+        if(systemUnitType){
+            unitMapping[systemUnit].forEach(giapUnit => { giapUnitToSystemType[giapUnit] = systemUnitType; });
+        }
+    });
+
+    if (giapTypeFilter) {
+        allLeftovers = allLeftovers.filter(item => (giapUnitToSystemType[item.Unidade] || 'Não Mapeado') === giapTypeFilter);
+    }
+
+    if (giapDescFilter) {
+        allLeftovers = allLeftovers.filter(item => normalizeStr(item.Descrição || item.Espécie).includes(giapDescFilter));
+    }
+    return allLeftovers;
+}
+
+function renderSobrantesConciliation() {
+     // ... (código original mantido)
+    const unidade = document.getElementById('sobras-filter-unidade').value;
+    if (!unidade) {
+        showNotification('Selecione uma unidade para carregar os itens S/T.', 'warning');
+        return;
+    }
+    linksToCreate = [];
+    renderCreatedLinks('sobras');
+
+    const systemFilterText = normalizeStr(document.getElementById('sobras-system-list-filter').value);
+    const systemItems = fullInventory.filter(i => {
+        const tombo = (i.Tombamento || '').trim().toLowerCase();
+        const isPending = linksToCreate.some(l => l.systemItem.id === i.id);
+        return !isPending &&
+               !i.isPermuta &&
+               i.Unidade === unidade &&
+               (tombo === '' || tombo === 's/t') &&
+               normalizeStr(i.Descrição || '').includes(systemFilterText); // Fallback
+    });
+
+    renderList('sobras-system-list', systemItems, 'id', 'Descrição', null, 'sobras');
+    const quickActions = document.getElementById('sobras-quick-actions');
+    if (quickActions) quickActions.classList.remove('hidden');
+
+
+    const filteredSobrantes = getFilteredSobrantes();
+    renderList('sobras-giap-list', filteredSobrantes, 'TOMBAMENTO', 'Descrição', null, 'sobras');
+}
+
+// findBestMatchForItem, renderEditByDescPreview já estão definidas
+
 // --- FIM: SEÇÃO ORIGINAL MANTIDA ---
+
+
+// --- HANDLERS DE EVENTOS (Separados para organização) ---
+
+// Handlers da Aba Otimizada (já existem na seção otimizada)
+// - applyFiltersAndPaginate, saveAllChanges, goToPage, confirmDeleteItems
+
+// Handlers da Aba Ligar Unidades
+async function handleSaveMapping() {
+    const mapSystemUnitSelect = document.getElementById('map-system-unit-select');
+    const mapGiapUnitMultiselect = document.getElementById('map-giap-unit-multiselect');
+    if (!mapSystemUnitSelect || !mapGiapUnitMultiselect) return; // Verifica
+
+    const systemUnits = Array.from(mapSystemUnitSelect.selectedOptions).map(opt => opt.value.trim());
+    if (systemUnits.length === 0) return showNotification("Selecione uma ou mais Unidades do Sistema.", "warning");
+    const giapUnits = Array.from(mapGiapUnitMultiselect.selectedOptions).map(opt => opt.value);
+    systemUnits.forEach(systemUnit => { unitMapping[systemUnit] = giapUnits; });
+    try {
+        if(domCache.feedbackStatus) domCache.feedbackStatus.innerHTML = `<div class="saving-spinner inline-block mr-2"></div> Salvando...`;
+        await setDoc(doc(db, 'config', 'unitMapping'), { mappings: unitMapping });
+        showNotification('Mapeamento salvo!', 'success');
+        if(domCache.feedbackStatus) domCache.feedbackStatus.textContent = `Mapeamento salvo!`;
+        populateUnitMappingTab(); // Re-renderiza a lista de mapeamentos salvos
+    } catch (error) { showNotification(`Erro ao salvar.`, 'error'); console.error(error); if(domCache.feedbackStatus) domCache.feedbackStatus.textContent = `Erro ao salvar.`; }
+}
+
+async function handleDeleteMapping(e) {
+    const deleteBtn = e.target.closest('.delete-mapping-btn');
+    if (deleteBtn) {
+        const systemUnit = (deleteBtn.dataset.systemUnit || '').trim();
+        delete unitMapping[systemUnit];
+        try {
+            if(domCache.feedbackStatus) domCache.feedbackStatus.innerHTML = `<div class="saving-spinner inline-block mr-2"></div> Removendo...`;
+            await setDoc(doc(db, 'config', 'unitMapping'), { mappings: unitMapping });
+            showNotification(`Ligação removida.`, 'success');
+            if(domCache.feedbackStatus) domCache.feedbackStatus.textContent = `Ligação removida.`;
+            populateUnitMappingTab(); // Re-renderiza a lista
+        } catch (error) { showNotification(`Erro ao remover.`, 'error'); console.error(error); if(domCache.feedbackStatus) domCache.feedbackStatus.textContent = `Erro ao remover.`; }
+    }
+}
+
+// Handlers da Aba Conciliar
+function handleConciliationTypeChange() {
+    const filterTipo = document.getElementById('filter-tipo');
+    const filterUnidade = document.getElementById('filter-unidade');
+    if (!filterTipo || !filterUnidade) return; // Verifica
+
+    const tipo = filterTipo.value;
+    const unidades = [...new Set(fullInventory
+        .filter(i => !reconciledUnits.includes(i.Unidade))
+        .filter(i => !tipo || i.Tipo === tipo)
+        .map(i => i.Unidade).filter(Boolean))].sort();
+
+    filterUnidade.innerHTML = '<option value="">Selecione uma Unidade</option>' + unidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+    filterUnidade.disabled = !tipo && unidades.length === 0; // Habilita se tipo for selecionado ou se houver unidades mesmo sem tipo
+}
+
+
+function handleLoadConciliation() {
+    const unidadeEl = document.getElementById('filter-unidade');
+    const tipoEl = document.getElementById('filter-tipo');
+    const warningDiv = document.getElementById('unit-reconciled-warning');
+    if(!unidadeEl || !tipoEl || !warningDiv) return; // Verifica
+
+    const unidade = unidadeEl.value.trim();
+    const tipo = tipoEl.value;
+
+
+    if (!unidade) {
+        warningDiv.classList.add('hidden');
+        return showNotification('Por favor, selecione uma unidade para carregar.', 'warning');
+    }
+
+    if(reconciledUnits.includes(unidade)) {
+        warningDiv.textContent = `Aviso: Esta unidade já foi finalizada. Para continuar a conciliá-la, vá para a aba "Conciliar com Sobras".`;
+        warningDiv.classList.remove('hidden');
+    } else {
+        warningDiv.classList.add('hidden');
+    }
+
+    activeConciliationUnit = unidade;
+    activeConciliationType = tipo;
+
+    const unitNameEl = document.getElementById('giap-list-unit-name');
+    if(unitNameEl) unitNameEl.textContent = unidade;
+    const mappedGiapUnits = unitMapping[unidade] || [unidade];
+    // Verifica se existe mapeamento E se ele é diferente da própria unidade (senão, não foi mapeado)
+    const isMapped = unitMapping.hasOwnProperty(unidade) && (mappedGiapUnits.length > 1 || mappedGiapUnits[0] !== unidade);
+    if(!isMapped && mappedGiapUnits[0] === unidade) { // Só mostra aviso se realmente não foi mapeado
+        showNotification('Esta unidade não está mapeada explicitamente. Vá para a aba "Ligar Unidades" para garantir a correspondência correta.', 'warning', 6000);
+    }
+
+
+    document.getElementById('system-list-filter').value = '';
+    document.getElementById('giap-list-filter').value = '';
+    linksToCreate = [];
+    renderCreatedLinks('unidade');
+    renderConciliationLists();
+    clearGiapImportSelection();
+
+    document.getElementById('quick-actions')?.classList.remove('hidden');
+    selSys = selGiap = null;
+}
+
+function handleClearConciliationSelections() {
+    selSys = selGiap = null;
+    document.querySelectorAll('#system-list .selected').forEach(el => el.classList.remove('selected'));
+    // Também limpa seleções na lista GIAP
+    document.querySelectorAll('#giap-list .selected, #giap-list .selected-for-import').forEach(el => el.classList.remove('selected', 'selected-for-import'));
+    clearGiapImportSelection(); // Limpa a contagem de importação
+    showNotification('Seleções limpas.', 'info');
+    // Talvez re-renderizar a lista GIAP sem sugestões
+    if(document.getElementById('filter-unidade')?.value) {
+         const { giapItems } = getConciliationData();
+         renderList('giap-list', giapItems, 'TOMBAMENTO', 'Descrição');
+    }
+}
+
+function handleSaveLinksResult(success) {
+    if (success) {
+        showNotification('Vínculos salvos! Atualizando listas...', 'success');
+        renderConciliationLists();
+        hideOverlay();
+    }
+    // O erro já é tratado dentro de savePendingLinks
+}
+
+async function handleFinishReconciliation() {
+    const unidadeEl = document.getElementById('filter-unidade');
+    if (!unidadeEl) return; // Verifica
+    const unidade = unidadeEl.value.trim();
+    const success = await savePendingLinks('unidade');
+    if (success) {
+        showOverlay('Finalizando unidade...');
+        if (unidade && !reconciledUnits.includes(unidade)) {
+            reconciledUnits.push(unidade);
+            try {
+                await setDoc(doc(db, 'config', 'reconciledUnits'), { units: reconciledUnits });
+                showNotification(`Unidade "${unidade}" movida para a conciliação de sobras.`, 'info');
+                // Atualiza o select de unidades na aba principal de conciliação
+                 handleConciliationTypeChange();
+            } catch (error) {
+                hideOverlay();
+                showNotification('Erro ao salvar o estado da unidade.', 'error');
+                console.error(error);
+                return;
+            }
+        }
+
+        // Muda para a sub-aba de sobras
+        const subTab = 'conciliacao_sobras';
+        document.querySelectorAll('#content-conciliar .sub-nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.subtabConciliar === subTab));
+        document.getElementById('subtab-conciliar-unidade').classList.add('hidden');
+        document.getElementById('subtab-conciliar-sobras').classList.remove('hidden');
+        document.getElementById('subtab-conciliar-itens_a_tombar').classList.add('hidden');
+
+        // Popula a aba de sobras
+        if (!initializedTabs.has(subTab)) { // Inicializa se for a primeira vez
+            populateSobrantesTab();
+             initializedTabs.add(subTab);
+        } else {
+             populateSobrantesTab(); // Apenas repopula os filtros
+        }
+        // Limpa as listas ao mudar
+        document.getElementById('sobras-system-list').innerHTML = `<p class="p-4 text-slate-500 text-center">Selecione Tipo e Unidade e clique em Carregar.</p>`;
+        document.getElementById('sobras-giap-list').innerHTML = `<p class="p-4 text-slate-500 text-center">Os tombos sobrando aparecerão aqui.</p>`;
+        document.getElementById('sobras-created-links').innerHTML = '';
+        document.getElementById('sobras-quick-actions')?.classList.add('hidden');
+
+        hideOverlay();
+        showNotification('Pronto para conciliar com os itens sobrando.', 'info');
+    }
+}
+
+function handleDeleteCreatedLink(e) {
+    const deleteBtn = e.target.closest('.delete-link-btn');
+    if (!deleteBtn) return;
+
+    const index = parseInt(deleteBtn.dataset.index, 10);
+    const removedLink = linksToCreate.splice(index, 1)[0];
+
+    if (removedLink) {
+        const systemEl = document.querySelector(`#system-list div[data-id='${removedLink.systemItem.id}']`);
+        if (systemEl) systemEl.classList.remove('linked');
+        const giapEl = document.querySelector(`#giap-list div[data-id='${removedLink.giapItem.TOMBAMENTO}']`);
+        if (giapEl) giapEl.classList.remove('linked');
+    }
+    renderCreatedLinks('unidade');
+    showNotification('Vínculo removido.', 'info');
+}
+
+async function handleImportGiapItems() {
+     if (giapItemsForImport.length === 0) return showNotification('Nenhum item GIAP selecionado para importar.', 'warning');
+
+    const tipo = activeConciliationType;
+    const unidade = activeConciliationUnit;
+    if (!unidade || !tipo) return showNotification('Por favor, carregue uma unidade primeiro antes de importar.', 'warning');
+
+    const estadoEl = document.getElementById('import-estado-select');
+    const estado = estadoEl ? estadoEl.value : 'Regular'; // Fallback
+
+
+    showOverlay(`Importando ${giapItemsForImport.length} itens...`);
+    const batch = writeBatch(db);
+    const newItemsForCache = [];
+
+    giapItemsForImport.forEach(giapItem => {
+        const newItemRef = doc(collection(db, 'patrimonio')); // Gera ID localmente
+        const newItem = {
+            id: newItemRef.id, // Adiciona o ID para cache
+            Tombamento: giapItem.TOMBAMENTO || '', Descrição: giapItem.Descrição || giapItem.Espécie || '',
+            Tipo: tipo, Unidade: unidade, Localização: '',
+            Fornecedor: giapItem['Nome Fornecedor'] || '', NF: giapItem.NF || '', 'Origem da Doação': '',
+            Estado: estado, Quantidade: 1, Observação: `Importado do GIAP. Unidade original: ${giapItem.Unidade || 'N/A'}`,
+            etiquetaPendente: true, isPermuta: false,
+            createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+        };
+        batch.set(newItemRef, newItem);
+        newItemsForCache.push(newItem); // Adiciona ao array para cache
+    });
+
+    try {
+        await batch.commit();
+
+        // Adiciona novos itens ao cache local e ao array principal
+        fullInventory.push(...newItemsForCache);
+        await idb.patrimonio.bulkAdd(newItemsForCache);
+
+        showNotification(`${giapItemsForImport.length} itens importados com sucesso! Atualizando...`, 'success');
+        clearGiapImportSelection();
+
+        renderConciliationLists(); // Re-renderiza localmente
+        hideOverlay();
+
+    } catch (e) {
+        hideOverlay();
+        showNotification('Erro ao importar itens.', 'error');
+        console.error(e);
+    }
+}
+
+function handleConciliationSubTabSwitch(e) {
+    const subTab = e.currentTarget.dataset.subtabConciliar;
+    document.querySelectorAll('#content-conciliar .sub-nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.subtabConciliar === subTab));
+    document.getElementById('subtab-conciliar-unidade').classList.toggle('hidden', subTab !== 'conciliacao_unidade');
+    document.getElementById('subtab-conciliar-sobras').classList.toggle('hidden', subTab !== 'conciliacao_sobras');
+    document.getElementById('subtab-conciliar-itens_a_tombar').classList.toggle('hidden', subTab !== 'itens_a_tombar');
+
+    linksToCreate = []; selSys = null; selGiap = null; // Limpa estado ao trocar sub-aba
+
+    if(subTab === 'itens_a_tombar') {
+        if (!initializedTabs.has('itens_a_tombar')) { // Inicializa se for a primeira vez
+             populateTombarTabFilters(); // Popula filtros antes de renderizar
+            renderItensATombar();
+            initializedTabs.add('itens_a_tombar');
+        } else {
+             renderItensATombar(); // Sempre re-renderiza para dados atualizados
+        }
+    } else if (subTab === 'conciliacao_sobras') {
+         if (!initializedTabs.has('conciliacao_sobras')) {
+            populateSobrantesTab(); // Popula os filtros
+            initializedTabs.add('conciliacao_sobras');
+         } else {
+             populateSobrantesTab(); // Apenas repopula os filtros
+         }
+         // Limpa listas ao trocar PARA esta aba
+         document.getElementById('sobras-system-list').innerHTML = `<p class="p-4 text-slate-500 text-center">Selecione Tipo e Unidade e clique em Carregar.</p>`;
+         document.getElementById('sobras-giap-list').innerHTML = `<p class="p-4 text-slate-500 text-center">Os tombos sobrando aparecerão aqui.</p>`;
+         document.getElementById('sobras-created-links').innerHTML = '';
+         document.getElementById('sobras-quick-actions')?.classList.add('hidden');
+    } else { // unidade
+         if (!initializedTabs.has('conciliacao_unidade')) {
+             // A aba unidade já é populada pelo initReconciliationTab principal
+             initializedTabs.add('conciliacao_unidade');
+         } else {
+             // Repopula filtros da aba unidade ao voltar para ela
+             populateReconciliationTab();
+         }
+         // Limpa listas ao trocar PARA esta aba
+         document.getElementById('system-list').innerHTML = `<p class="p-4 text-slate-500 text-center">Selecione uma unidade e clique em carregar.</p>`;
+         document.getElementById('giap-list').innerHTML = `<p class="p-4 text-slate-500 text-center">Selecione uma unidade e clique em carregar.</p>`;
+         document.getElementById('created-links').innerHTML = '';
+         document.getElementById('quick-actions')?.classList.add('hidden');
+    }
+}
+
+// Handler para popular filtros da aba "Itens a Tombar"
+function populateTombarTabFilters() {
+     const tipos = [...new Set(fullInventory.filter(i => i.etiquetaPendente === true).map(i => i.Tipo).filter(Boolean))].sort();
+     const tipoSelect = document.getElementById('tombar-filter-tipo');
+     if(tipoSelect) tipoSelect.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+
+     const unidadeSelect = document.getElementById('tombar-filter-unidade');
+     if(unidadeSelect) {
+         unidadeSelect.innerHTML = '<option value="">Selecione um Tipo</option>';
+         unidadeSelect.disabled = true;
+     }
+}
+
+
+// Handlers da Aba Conciliar Sobras
+function handleSaveLinksResultSobras(success) {
+     if (success) {
+        showNotification('Vínculos salvos! Atualizando listas...', 'success');
+        renderSobrantesConciliation();
+        hideOverlay();
+    }
+}
+function handleClearSobrantesSelections() {
+     selSys = selGiap = null;
+    document.querySelectorAll('#sobras-system-list .selected').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('#sobras-giap-list .selected').forEach(el => el.classList.remove('selected'));
+    showNotification('Seleções limpas.', 'info');
+     // Re-renderiza a lista GIAP sem sugestões
+     const filteredSobrantes = getFilteredSobrantes();
+     renderList('sobras-giap-list', filteredSobrantes, 'TOMBAMENTO', 'Descrição', null, 'sobras');
+}
+function handleDeleteCreatedLinkSobras(e) {
+    const deleteBtn = e.target.closest('.delete-link-btn');
+    if (!deleteBtn) return;
+    const index = parseInt(deleteBtn.dataset.index, 10);
+    const removedLink = linksToCreate.splice(index, 1)[0];
+    if (removedLink) {
+        const systemEl = document.querySelector(`#sobras-system-list div[data-id='${removedLink.systemItem.id}']`);
+        if (systemEl) systemEl.classList.remove('linked');
+        const giapEl = document.querySelector(`#sobras-giap-list div[data-id='${removedLink.giapItem.TOMBAMENTO}']`);
+        if (giapEl) giapEl.classList.remove('linked');
+    }
+    renderCreatedLinks('sobras');
+    showNotification('Vínculo removido.', 'info');
+}
+
+// Handlers da Aba Itens a Tombar
+function handleTombarFilterChange() {
+    const tipo = document.getElementById('tombar-filter-tipo').value;
+    const unidades = [...new Set(fullInventory
+        .filter(i => i.etiquetaPendente === true && (!tipo || i.Tipo === tipo))
+        .map(i => i.Unidade).filter(Boolean))].sort();
+    const selU = document.getElementById('tombar-filter-unidade');
+    if(selU) {
+        selU.innerHTML = '<option value="">Todas as Unidades</option>' + unidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+        selU.disabled = false;
+    }
+    renderItensATombar();
+}
+
+async function handleConfirmTombamento(e) {
+    const btn = e.target.closest('.confirmar-tombamento-btn');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+    try {
+        const docRef = doc(db, 'patrimonio', id);
+        await updateDoc(docRef, { etiquetaPendente: false });
+        const itemInInventory = fullInventory.find(i => i.id === id);
+        if(itemInInventory) itemInInventory.etiquetaPendente = false;
+        await idb.patrimonio.update(id, { etiquetaPendente: false });
+        showNotification('Tombamento confirmado!', 'success');
+        renderItensATombar(); // Re-renderiza a lista atualizada
+    } catch (error) {
+        console.error('Erro ao confirmar tombamento:', error);
+        showNotification('Erro ao confirmar.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Confirmar Tombamento';
+    }
+}
+
+// Handlers da Aba Transferências
+async function handleTransferAction(e) {
+    const target = e.target;
+    if (target.classList.contains('select-all-in-unit')) {
+        const detailsContent = target.closest('details');
+        const checkboxes = detailsContent.querySelectorAll('.transfer-item-checkbox');
+        checkboxes.forEach(cb => cb.checked = target.checked);
+        return;
+    }
+    const actionButton = target.closest('.keep-selected-btn, .transfer-selected-btn');
+    if (!actionButton) return;
+    const detailsContent = actionButton.closest('details');
+    const selectedCheckboxes = detailsContent.querySelectorAll('.transfer-item-checkbox:checked');
+    if (selectedCheckboxes.length === 0) {
+        showNotification('Nenhum item selecionado para a ação.', 'warning');
+        return;
+    }
+    const batch = writeBatch(db);
+    let actionDescription = '';
+    const itemsToUpdateLocally = []; // Para atualizar cache
+
+    if (actionButton.classList.contains('keep-selected-btn')) {
+        actionDescription = `Mantendo ${selectedCheckboxes.length} iten(s) na unidade de origem...`;
+        selectedCheckboxes.forEach(cb => {
+            const docRef = doc(db, 'patrimonio', cb.dataset.id);
+            const updateData = { Observação: 'Transferência GIAP ignorada manualmente.', updatedAt: serverTimestamp() };
+            batch.update(docRef, updateData);
+            itemsToUpdateLocally.push({ id: cb.dataset.id, changes: { Observação: 'Transferência GIAP ignorada manualmente.' } });
+        });
+    } else if (actionButton.classList.contains('transfer-selected-btn')) {
+        actionDescription = `Transferindo ${selectedCheckboxes.length} iten(s)...`;
+        selectedCheckboxes.forEach(cb => {
+            const docRef = doc(db, 'patrimonio', cb.dataset.id);
+            const newUnit = cb.dataset.giapUnit;
+            // Tenta encontrar o tipo da nova unidade
+            const existingItemInNewUnit = fullInventory.find(i => i.Unidade === newUnit);
+            const newTipo = existingItemInNewUnit ? existingItemInNewUnit.Tipo : 'N/A (Verificar)';
+            const updateData = { Unidade: newUnit, Tipo: newTipo, Observação: 'Item transferido para unidade correta via auditoria.', updatedAt: serverTimestamp() };
+            batch.update(docRef, updateData);
+            itemsToUpdateLocally.push({ id: cb.dataset.id, changes: { Unidade: newUnit, Tipo: newTipo, Observação: 'Item transferido para unidade correta via auditoria.' } });
+        });
+    }
+
+    showOverlay(actionDescription);
+    try {
+        await batch.commit();
+        // Atualiza cache
+        await idb.transaction('rw', idb.patrimonio, async () => {
+             for (const update of itemsToUpdateLocally) {
+                 await idb.patrimonio.update(update.id, update.changes);
+             }
+        });
+        // Atualiza array principal
+        itemsToUpdateLocally.forEach(update => {
+             const index = fullInventory.findIndex(i => i.id === update.id);
+             if (index > -1) {
+                 fullInventory[index] = { ...fullInventory[index], ...update.changes };
+             }
+        });
+        showNotification('Ação concluída com sucesso! Atualizando visualização...', 'success');
+        populatePendingTransfersTab(); // Re-renderiza a aba
+    } catch (error) {
+        showNotification('Ocorreu um erro ao processar a solicitação.', 'error');
+        console.error("Erro na ação de transferência:", error);
+    } finally {
+        hideOverlay();
+    }
+}
+
+// Handlers da Aba Importação
+function handleImportSubTabSwitch(e) {
+    const subTab = e.currentTarget.dataset.subtab;
+    document.querySelectorAll('#content-importacao .sub-nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.subtab === subTab));
+    document.getElementById('subtab-content-substituir').classList.toggle('hidden', subTab !== 'substituir');
+    document.getElementById('subtab-content-edit-by-desc').classList.toggle('hidden', subTab !== 'edit-by-desc');
+    document.getElementById('subtab-content-massa').classList.toggle('hidden', subTab !== 'massa');
+    document.getElementById('subtab-content-add_giap').classList.toggle('hidden', subTab !== 'add_giap');
+}
+
+function handlePreviewReplace() {
+    const data = document.getElementById('replace-data').value;
+    const unit = document.getElementById('replace-unit').value;
+    if (!unit) return showNotification('Selecione uma unidade de destino primeiro.', 'warning');
+    if (!data) return showNotification('Cole os dados da planilha na área de texto.', 'warning');
+
+    Papa.parse(data, {
+        header: false,
+        skipEmptyLines: true,
+        complete: (results) => {
+             if (results.errors.length > 0) {
+                 console.error("PapaParse errors:", results.errors);
+                 showNotification(`Erro ao ler dados colados (linha ${results.errors[0].row}). Verifique o formato.`, 'error');
+                 return;
+             }
+            itemsToReplace = results.data.map(row => ({
+                UNIDADE_EXCEL: (row[0] || '').trim(),
+                ITEM: (row[1] || '').trim(),
+                TOMBO: (row[2] || '').trim(),
+                LOCAL: (row[3] || '').trim(),
+                ESTADO: (row[4] || '').trim()
+            })).filter(item => item.ITEM); // Filtra linhas sem descrição de item
+
+            const previewList = document.getElementById('replace-preview-list');
+            const countEl = document.getElementById('replace-preview-count');
+            if (countEl) countEl.textContent = itemsToReplace.length;
+            if (previewList) {
+                previewList.innerHTML = itemsToReplace.map(item => `
+                    <div class="p-2 border-b text-xs">
+                        <strong>${escapeHtml(item.ITEM)}</strong> (Tombo: ${escapeHtml(item.TOMBO) || 'S/T'})<br>
+                        Local: ${escapeHtml(item.LOCAL)} | Estado: ${escapeHtml(item.ESTADO)}
+                    </div>
+                `).join('');
+            }
+             const resultsDiv = document.getElementById('replace-results');
+             if (resultsDiv) resultsDiv.classList.remove('hidden');
+
+            // Reseta e desabilita botão de confirmação
+            const checkbox = document.getElementById('replace-confirm-checkbox');
+            const confirmBtn = document.getElementById('confirm-replace-btn');
+            if (checkbox) checkbox.checked = false;
+            if (confirmBtn) confirmBtn.disabled = true;
+        },
+        error: (err) => {
+            showNotification('Erro ao processar os dados. Verifique o formato.', 'error');
+            console.error(err);
+             const resultsDiv = document.getElementById('replace-results');
+             if(resultsDiv) resultsDiv.classList.add('hidden');
+        }
+    });
+}
+
+function handleReplaceConfirmChange(e) {
+     const confirmBtn = document.getElementById('confirm-replace-btn');
+     if(confirmBtn) confirmBtn.disabled = !e.target.checked;
+}
+
+async function handleConfirmReplace() {
+    const tipo = document.getElementById('replace-tipo').value;
+    const unidade = document.getElementById('replace-unit').value.trim();
+
+    if (!unidade || itemsToReplace.length === 0) return showNotification('Dados inválidos ou unidade não selecionada.', 'error');
+
+    showOverlay(`Substituindo inventário de ${unidade}...`);
+    const itemsToDelete = fullInventory.filter(item => item.Unidade.trim() === unidade);
+    const idsToDelete = itemsToDelete.map(item => item.id);
+
+    const batch = writeBatch(db);
+
+    itemsToDelete.forEach(item => {
+        const docRef = doc(db, 'patrimonio', item.id);
+        batch.delete(docRef);
+    });
+
+    const newItemsAdded = []; // Para atualizar cache e array
+    itemsToReplace.forEach(item => {
+        const newItemRef = doc(collection(db, 'patrimonio'));
+        const { estado, origem } = parseEstadoEOrigem(item.ESTADO);
+        const newItemData = {
+            Unidade: unidade, Tipo: tipo,
+            Descrição: item.ITEM || '', Tombamento: item.TOMBO || 'S/T',
+            Localização: item.LOCAL || '',
+            Estado: estado,
+            'Origem da Doação': origem,
+            Quantidade: 1, Fornecedor: '', NF: '',
+            Observação: 'Importado via substituição de planilha.',
+            etiquetaPendente: (item.TOMBO && item.TOMBO.toLowerCase() !== 's/t'),
+            isPermuta: false,
+            createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+        };
+        batch.set(newItemRef, newItemData);
+        newItemsAdded.push({ ...newItemData, id: newItemRef.id }); // Adiciona com ID para cache
+    });
+
+    try {
+        await batch.commit();
+        // Atualiza cache e array principal
+        await idb.patrimonio.bulkDelete(idsToDelete);
+        await idb.patrimonio.bulkAdd(newItemsAdded);
+        fullInventory = fullInventory.filter(item => item.Unidade.trim() !== unidade);
+        fullInventory.push(...newItemsAdded);
+
+        showNotification(`Inventário de ${unidade} substituído com sucesso! Atualizando...`, 'success');
+        // Limpa a UI da aba
+        document.getElementById('replace-data').value = '';
+        document.getElementById('replace-results').classList.add('hidden');
+        document.getElementById('replace-confirm-checkbox').checked = false;
+        document.getElementById('confirm-replace-btn').disabled = true;
+        itemsToReplace = [];
+        // Repopula selects em outras abas que podem ter sido afetadas
+        initializedTabs.clear(); // Força reinicialização de todas as abas
+        dataLoaded = false; // Força recarregamento completo dos dados
+        await loadData(true); // Recarrega do servidor
+
+    } catch(e) {
+        showNotification('Erro ao substituir o inventário.', 'error');
+        console.error(e);
+    } finally {
+        hideOverlay();
+    }
+}
+
+function handlePreviewEditByDesc() {
+     const unidade = document.getElementById('edit-by-desc-unit').value;
+    const data = document.getElementById('edit-by-desc-data').value;
+    if (!unidade) return showNotification('Selecione uma unidade de destino.', 'warning');
+    if (!data) return showNotification('Cole os dados da planilha.', 'warning');
+
+    const mappedGiapUnits = (unitMapping[unidade] || [unidade]).map(u => normalizeStr(u));
+
+    Papa.parse(data, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (h) => {
+            const normH = normalizeStr(h);
+            if (normH.includes('item') || normH.includes('descri')) return 'descricao';
+            if (normH.includes('tombo') || normH.includes('tombamento')) return 'tombamento';
+            if (normH.includes('local')) return 'localizacao';
+            if (normH.includes('estado')) return 'estado';
+            return h;
+        },
+        complete: (results) => {
+            if (results.errors.length > 0) {
+                 showNotification('Erro ao ler cabeçalhos da planilha. Verifique nomes das colunas.', 'error');
+                 console.error("PapaParse errors:", results.errors);
+                 return;
+            }
+            const pastedData = results.data;
+            const inventoryInUnit = fullInventory.filter(i => i.Unidade === unidade);
+            const existingTombos = new Map(fullInventory.map(i => [normalizeTombo(i.Tombamento), i]));
+
+            const availableItems = inventoryInUnit.map(item => ({ item, isMatched: false }));
+
+            updatesToProcess = pastedData.map((row, rowIndex) => {
+                const pastedDesc = (row.descricao || '').trim();
+                const pastedTomboRaw = (row.tombamento || 'S/T').trim();
+                const pastedTombo = normalizeTombo(pastedTomboRaw);
+                const pastedLocal = (row.localizacao || '').trim();
+                const { estado: pastedEstado } = parseEstadoEOrigem((row.estado || '').trim()); // Apenas o estado
+
+                if (!pastedDesc && !pastedTomboRaw && !pastedLocal && !(row.estado || '').trim()) {
+                    return { id: rowIndex, status: 'empty_row' }; // Ignora linha completamente vazia
+                }
+                 if (!pastedDesc) {
+                     // Considera erro se não houver descrição, pois é a chave primária da busca
+                     return { id: rowIndex, status: 'missing_desc', pastedData: { descricao: '', tombamento: pastedTombo, localizacao: pastedLocal, estado: pastedEstado } };
+                 }
+
+                const pastedItemForMatching = { descricao: pastedDesc, localizacao: pastedLocal, estado: pastedEstado };
+                const { wrapper: bestMatchWrapper, matchType } = findBestMatchForItem(pastedItemForMatching, availableItems);
+
+                const systemItem = bestMatchWrapper ? bestMatchWrapper.item : null;
+                const giapItem = pastedTombo ? giapMapAllItems.get(pastedTombo) : null; // Usa giapMapAllItems para checar existência
+                const tomboInUse = pastedTombo && pastedTombo !== 'S/T' && existingTombos.has(pastedTombo) && existingTombos.get(pastedTombo).id !== systemItem?.id;
+
+                let tomboWrongLocation = false;
+                if (giapItem) {
+                    const giapUnitForTombo = normalizeStr(giapItem.Unidade);
+                    if (!mappedGiapUnits.includes(giapUnitForTombo)) {
+                        tomboWrongLocation = true;
+                    }
+                }
+
+                let status = 'ok';
+                if (!systemItem) {
+                    status = 'not_found';
+                } else if (matchType.includes('Ambigua')) {
+                    status = 'multiple_found';
+                } else if (tomboInUse) {
+                    status = 'tombo_in_use';
+                } else if (tomboWrongLocation) {
+                    status = 'tombo_wrong_location';
+                } else if (!pastedTombo || pastedTombo === 'S/T') {
+                    // Se não tem tombo na planilha, não considera erro, apenas não atualiza tombo
+                } else if (!giapItem) {
+                     // Tombo existe na planilha mas não no GIAP
+                    status = 'tombo_not_in_giap'; // Novo status
+                }
+
+
+                return {
+                    id: rowIndex,
+                    pastedData: { descricao: pastedDesc, tombamento: pastedTombo, localizacao: pastedLocal, estado: pastedEstado },
+                    systemItem, giapItem, status, matchType, useGiapDesc: false,
+                };
+            }).filter(u => u.status !== 'empty_row');
+
+            renderEditByDescPreview(updatesToProcess);
+             const resultsDiv = document.getElementById('edit-by-desc-results');
+             const confirmBtn = document.getElementById('confirm-edit-by-desc-btn');
+             const countEl = document.getElementById('edit-by-desc-preview-count');
+
+             if (resultsDiv) resultsDiv.classList.remove('hidden');
+            const validCount = updatesToProcess.filter(u => u.status === 'ok' || u.status === 'tombo_not_in_giap').length;
+             if (confirmBtn) confirmBtn.disabled = validCount === 0;
+             if (countEl) countEl.textContent = `${updatesToProcess.length} (Válidos para salvar: ${validCount})`;
+
+
+        },
+         error: (err) => {
+            showNotification('Erro ao processar dados. Verifique formato e cabeçalhos.', 'error');
+            console.error(err);
+             const resultsDiv = document.getElementById('edit-by-desc-results');
+             if (resultsDiv) resultsDiv.classList.add('hidden');
+        }
+    });
+}
+
+function handleEditByDescCheckboxChange(e) {
+     const checkbox = e.target;
+    if (checkbox.classList.contains('use-giap-desc-cb')) {
+        const updateId = parseInt(checkbox.dataset.updateId, 10);
+        const update = updatesToProcess.find(u => u.id === updateId);
+        if (update) {
+            update.useGiapDesc = checkbox.checked;
+        }
+    }
+}
+
+async function handleConfirmEditByDesc() {
+    const validUpdates = updatesToProcess.filter(u => u.status === 'ok' || u.status === 'tombo_not_in_giap'); // Inclui tombo_not_in_giap
+    if(validUpdates.length === 0) return showNotification('Nenhum item válido para atualizar.', 'error');
+
+    showOverlay(`Atualizando ${validUpdates.length} itens...`);
+    const batch = writeBatch(db);
+    const itemsToUpdateLocally = [];
+
+    validUpdates.forEach(upd => {
+        const docRef = doc(db, 'patrimonio', upd.systemItem.id);
+        const updatePayload = {
+            // Tombamento SÓ é atualizado se for válido (não S/T e não 'tombo_not_in_giap')
+            ...(upd.pastedData.tombamento && upd.pastedData.tombamento !== 'S/T' && upd.status !== 'tombo_not_in_giap' && { Tombamento: upd.pastedData.tombamento }),
+            Localização: upd.pastedData.localizacao,
+            Estado: upd.pastedData.estado,
+            updatedAt: serverTimestamp()
+        };
+
+
+        if (upd.useGiapDesc && upd.giapItem) {
+            const giapDesc = upd.giapItem.Descrição || upd.giapItem.Espécie;
+            if(giapDesc) {
+               updatePayload.Descrição = giapDesc;
+            }
+        }
+
+        // Marca para etiqueta apenas se o tombo for válido e não S/T
+        if(upd.pastedData.tombamento && upd.pastedData.tombamento.toLowerCase() !== 's/t' && upd.status !== 'tombo_not_in_giap') {
+            updatePayload.etiquetaPendente = true;
+        }
+
+        batch.update(docRef, updatePayload);
+        itemsToUpdateLocally.push({ id: upd.systemItem.id, changes: updatePayload });
+    });
+
+    try {
+        await batch.commit();
+         // Atualiza cache e array principal
+        await idb.transaction('rw', idb.patrimonio, async () => {
+             for (const update of itemsToUpdateLocally) {
+                 await idb.patrimonio.update(update.id, update.changes);
+             }
+        });
+        itemsToUpdateLocally.forEach(update => {
+             const index = fullInventory.findIndex(i => i.id === update.id);
+             if (index > -1) {
+                 // Aplica as mudanças ao item existente no array principal
+                 fullInventory[index] = { ...fullInventory[index], ...update.changes };
+             }
+        });
+
+
+        showNotification(`${validUpdates.length} itens atualizados com sucesso! Atualizando visualização...`, 'success');
+        // Limpa a UI da aba
+        document.getElementById('edit-by-desc-data').value = '';
+        document.getElementById('edit-by-desc-results').classList.add('hidden');
+        updatesToProcess = [];
+         // Repopula selects e reinicializa abas afetadas
+         initializedTabs.clear(); // Força reinicialização de todas as abas
+         dataLoaded = false; // Força recarregamento completo dos dados
+         await loadData(true); // Recarrega do servidor
+
+    } catch(e) {
+        showNotification('Erro ao atualizar os itens.', 'error');
+        console.error(e);
+    } finally {
+         hideOverlay();
+    }
+}
+
+
+function handleMassTransferSearch() {
+    const tombosInputEl = document.getElementById('mass-transfer-tombos');
+    if (!tombosInputEl) return; // Verifica
+    const tombosInput = tombosInputEl.value;
+    const tombos = tombosInput.split(/[\s,]+/).map(t => normalizeTombo(t.trim())).filter(Boolean); // Normaliza aqui
+    const existingTombos = new Set(fullInventory.map(i => normalizeTombo(i.Tombamento))); // Normaliza aqui
+    const foundItems = []; const notFound = [];
+    tombos.forEach(tombo => {
+        const giapItem = giapMap.get(tombo); // Já busca normalizado
+        if (giapItem && !existingTombos.has(tombo)) foundItems.push(giapItem);
+        else notFound.push(tombo);
+    });
+    if (notFound.length > 0) showNotification(`Não encontrados ou já existem: ${notFound.join(', ')}`, 'warning', 5000);
+    const massTransferResults = document.getElementById('mass-transfer-results');
+    const massTransferList = document.getElementById('mass-transfer-list');
+    if (massTransferResults && massTransferList) {
+        if (foundItems.length > 0) {
+            const estadoOptions = ['Novo', 'Bom', 'Regular', 'Avariado'];
+            massTransferList.innerHTML = foundItems.map(item => `
+                <div class="p-2 border rounded-md bg-slate-50 grid grid-cols-3 gap-4 items-center">
+                    <div class="col-span-2"><strong>${escapeHtml(item.TOMBAMENTO)}</strong> - ${escapeHtml(item.Descrição || item.Espécie)}</div>
+                    <div><select data-tombo="${escapeHtml(item.TOMBAMENTO)}" class="mass-transfer-status w-full p-1 border rounded bg-white">${estadoOptions.map(opt => `<option>${opt}</option>`).join('')}</select></div>
+                </div>`).join('');
+            massTransferResults.classList.remove('hidden');
+        } else {
+            massTransferList.innerHTML = ''; // Limpa a lista se não houver itens
+            massTransferResults.classList.add('hidden');
+        }
+    }
+}
+
+
+function handleMassTransferSetAllStatus(e) {
+    document.querySelectorAll('.mass-transfer-status').forEach(select => select.value = e.target.value);
+}
+
+async function handleMassTransferConfirm() {
+    const massTransferUnitEl = document.getElementById('mass-transfer-unit');
+    const massTransferTipoEl = document.getElementById('mass-transfer-tipo');
+     if (!massTransferUnitEl || !massTransferTipoEl) return; // Verifica
+
+    const destinationUnit = massTransferUnitEl.value;
+    const destinationTipo = massTransferTipoEl.value;
+    if (!destinationUnit) return showNotification('Selecione uma unidade de destino.', 'warning');
+    if (!destinationTipo) return showNotification('Selecione um tipo de unidade de destino.', 'warning');
+
+    const itemsToCreateElements = Array.from(document.querySelectorAll('.mass-transfer-status'));
+    if (itemsToCreateElements.length === 0) return;
+
+    showOverlay(`Criando ${itemsToCreateElements.length} itens...`);
+    const batch = writeBatch(db);
+    const newItemsForCache = []; // Para atualizar localmente
+
+    itemsToCreateElements.forEach(select => {
+        const tombo = select.dataset.tombo;
+        const giapItem = giapMap.get(tombo); // Busca normalizado
+        if (giapItem) {
+            const newItemRef = doc(collection(db, 'patrimonio'));
+            const newItem = {
+                id: newItemRef.id, // Adiciona ID para cache
+                Tombamento: tombo, Descrição: giapItem.Descrição || giapItem.Espécie || '',
+                Tipo: destinationTipo, Unidade: destinationUnit, Localização: '',
+                Fornecedor: giapItem['Nome Fornecedor'] || '', NF: giapItem.NF || '', 'Origem da Doação': '',
+                Estado: select.value, Quantidade: 1, Observação: `Importado em massa. Unidade GIAP: ${giapItem.Unidade || 'N/A'}`,
+                etiquetaPendente: true, isPermuta: false,
+                createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+            };
+            batch.set(newItemRef, newItem);
+            newItemsForCache.push(newItem);
+        }
+    });
+    try {
+        await batch.commit();
+        // Atualiza cache e array principal
+        fullInventory.push(...newItemsForCache);
+        await idb.patrimonio.bulkAdd(newItemsForCache);
+
+        showNotification(`${itemsToCreateElements.length} itens criados com sucesso! Atualizando...`, 'success');
+         // Limpa a UI da aba
+        document.getElementById('mass-transfer-tombos').value = '';
+        document.getElementById('mass-transfer-results').classList.add('hidden');
+        document.getElementById('mass-transfer-list').innerHTML = '';
+         // Repopula selects e reinicializa abas afetadas
+         initializedTabs.clear(); // Força reinicialização de todas as abas
+         dataLoaded = false; // Força recarregamento completo dos dados
+         await loadData(true); // Recarrega do servidor
+
+    } catch (e) {
+        showNotification('Erro ao criar itens em massa.', 'error');
+        console.error(e);
+    } finally {
+        hideOverlay();
+    }
+}
+
+async function handleSaveGiapUnit() {
+     const nameInput = document.getElementById('add-giap-name');
+     const numberInput = document.getElementById('add-giap-number');
+     if (!nameInput || !numberInput) return; // Verifica
+
+    const newUnitName = nameInput.value.trim();
+    const newUnitNumber = numberInput.value.trim();
+    if (!newUnitName) {
+        return showNotification('O nome da unidade não pode ser vazio.', 'warning');
+    }
+
+    const normalizedNewName = normalizeStr(newUnitName);
+    const allGiapUnitNames = new Set(giapInventory.map(i => normalizeStr(i.Unidade)).filter(Boolean));
+    const allCustomUnitNames = new Set(customGiapUnits.map(u => normalizeStr(u.name)));
+
+    if (allGiapUnitNames.has(normalizedNewName) || allCustomUnitNames.has(normalizedNewName)) {
+        return showNotification('Esta unidade já existe.', 'error');
+    }
+
+    showOverlay('Salvando nova unidade...');
+    const updatedCustomUnits = [...customGiapUnits, { name: newUnitName, number: newUnitNumber }];
+
+    try {
+        const docRef = doc(db, 'config', 'customGiapUnits');
+        await setDoc(docRef, { units: updatedCustomUnits });
+        customGiapUnits.push({ name: newUnitName, number: newUnitNumber });
+        showNotification('Nova unidade salva com sucesso!', 'success');
+        nameInput.value = '';
+        numberInput.value = '';
+        updateGiapUnitOptions(); // Refresh the list na aba Ligar Unidades
+    } catch(e) {
+        showNotification('Erro ao salvar a nova unidade.', 'error');
+        console.error(e);
+    } finally {
+        hideOverlay();
+    }
+}
+
+// Handlers da Aba NF
+function handleClearNfFilters() {
+    document.getElementById('nf-search').value = '';
+    document.getElementById('nf-item-search').value = '';
+    document.getElementById('nf-fornecedor-search').value = '';
+    document.getElementById('nf-tipo-entrada').value = '';
+    document.getElementById('nf-status-filter').value = '';
+    document.getElementById('nf-date-start').value = '';
+    document.getElementById('nf-date-end').value = '';
+    renderNfList();
+}
+
+
+// --- FIM DOS HANDLERS ---
 
 
 // --- INICIALIZAÇÃO GERAL ---
@@ -1239,34 +2961,34 @@ document.addEventListener('DOMContentLoaded', () => {
             authReady = true;
             console.log("Auth state initialized.");
              // Garante que o estado visual inicial seja 'não logado' até a confirmação
-             domCache.userEmailEdit.textContent = 'Verificando...';
-             domCache.authGate.classList.remove('hidden'); // Mostra o bloqueio inicialmente
-             domCache.loadingScreen.classList.add('hidden'); // Esconde o loading
+             if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = 'Verificando...';
+             if (domCache.authGate) domCache.authGate.classList.remove('hidden'); // Mostra o bloqueio inicialmente
+             if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden'); // Esconde o loading
         }
 
          // Pequeno delay para dar tempo ao Firebase de confirmar o estado
          setTimeout(() => {
             const currentUser = auth.currentUser; // Pega o estado atualizado
              if (currentUser) {
-                 domCache.userEmailEdit.textContent = currentUser.email;
-                 domCache.authGate.classList.add('hidden'); // Esconde o bloqueio
-                 domCache.loadingScreen.classList.remove('hidden'); // Mostra carregando dados
-                 domCache.feedbackStatus.textContent = "Usuário autenticado. Carregando dados...";
+                 if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = currentUser.email;
+                 if (domCache.authGate) domCache.authGate.classList.add('hidden'); // Esconde o bloqueio
+                 if (domCache.loadingScreen) domCache.loadingScreen.classList.remove('hidden'); // Mostra carregando dados
+                 if (domCache.feedbackStatus) domCache.feedbackStatus.textContent = "Usuário autenticado. Carregando dados...";
                  if (!dataLoaded) {
                      loadData(false); // Carrega os dados APENAS se logado e dados não carregados
                  } else {
-                     domCache.loadingScreen.classList.add('hidden'); // Esconde o loading se dados já estavam carregados
+                     if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden'); // Esconde o loading se dados já estavam carregados
                      // Se dados já carregados, inicializa a aba ativa
                       const currentActiveTab = document.querySelector('#edit-nav .nav-btn.active')?.dataset.tab || 'edicao';
                       initializeTabContent(currentActiveTab);
                  }
              } else {
-                 domCache.userEmailEdit.textContent = 'Não logado';
-                 domCache.authGate.classList.remove('hidden'); // Mostra o bloqueio
-                 domCache.loadingScreen.classList.add('hidden'); // Esconde o carregando
+                 if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = 'Não logado';
+                 if (domCache.authGate) domCache.authGate.classList.remove('hidden'); // Mostra o bloqueio
+                 if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden'); // Esconde o carregando
                  // Coloca a mensagem de erro dentro do authGate, não no loadingScreen
                  const authGateMessage = `<div class="flex items-center justify-center h-screen"><div class="text-center p-8 bg-white rounded-lg shadow-xl"><h2 class="text-2xl font-bold text-red-600 mb-4">Acesso Negado</h2><p>Você precisa estar logado para acessar esta página.</p><p class="mt-2 text-sm">Volte para a página principal para fazer o login.</p></div></div>`;
-                 domCache.authGate.innerHTML = authGateMessage;
+                 if (domCache.authGate) domCache.authGate.innerHTML = authGateMessage;
 
              }
          }, 500); // Aumenta um pouco o delay se necessário
@@ -1275,36 +2997,39 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Listeners de Navegação (Lazy Loading)
-    domCache.navButtons.forEach(button => {
-        button.addEventListener('click', (e) => {
-            const tabName = e.currentTarget.dataset.tab;
-            // Troca visual da aba ativa
-            domCache.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabName));
-            // Mostra/Esconde painéis de conteúdo
-            domCache.contentPanes.forEach(pane => {
-                 // Verifica se o ID do painel termina com o nome da aba (considerando prefixo 'content-')
-                 const paneId = pane.id || '';
-                 pane.classList.toggle('hidden', !paneId.startsWith(`content-${tabName}`));
+    if(domCache.navButtons) {
+        domCache.navButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                const tabName = e.currentTarget.dataset.tab;
+                // Troca visual da aba ativa
+                domCache.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabName));
+                // Mostra/Esconde painéis de conteúdo
+                domCache.contentPanes.forEach(pane => {
+                     // Verifica se o ID do painel começa com 'content-' seguido pelo nome da aba
+                     const paneId = pane.id || '';
+                     pane.classList.toggle('hidden', !paneId.startsWith(`content-${tabName}`));
+                });
+
+
+                // Inicializa o conteúdo da aba SE necessário e SE logado/dados carregados
+                if (authReady && auth.currentUser && dataLoaded) {
+                    initializeTabContent(tabName);
+                } else if (authReady && !auth.currentUser) {
+                     console.log("User not logged in, cannot initialize tab content.");
+                     showNotification("Faça login para acessar esta aba.", "warning");
+                } else {
+                     console.log("Auth or data not ready, delaying tab initialization.");
+                      showNotification("Aguarde o carregamento dos dados...", "info");
+                }
             });
-
-
-            // Inicializa o conteúdo da aba SE necessário e SE logado/dados carregados
-            if (authReady && auth.currentUser && dataLoaded) {
-                initializeTabContent(tabName);
-            } else if (authReady && !auth.currentUser) {
-                 console.log("User not logged in, cannot initialize tab content.");
-                 showNotification("Faça login para acessar esta aba.", "warning");
-            } else {
-                 console.log("Auth or data not ready, delaying tab initialization.");
-                  showNotification("Aguarde o carregamento dos dados...", "info");
-            }
         });
-    });
+    }
 
-    // Adiciona listeners para os modais (importante!)
-    document.getElementById('desc-choice-cancel-btn')?.addEventListener('click', handleDescChoiceCancel);
-    document.getElementById('desc-choice-keep-btn')?.addEventListener('click', handleDescChoiceKeep);
-    document.getElementById('desc-choice-update-btn')?.addEventListener('click', handleDescChoiceUpdate);
+    // Adiciona listeners para os modais (importante!) - **CORREÇÃO AQUI**
+    document.getElementById('desc-choice-cancel-btn')?.addEventListener('click', handleDescChoiceCancel); // Listener movido para ser adicionado após definição
+    document.getElementById('desc-choice-keep-btn')?.addEventListener('click', handleDescChoiceKeep);     // Listener movido
+    document.getElementById('desc-choice-update-btn')?.addEventListener('click', handleDescChoiceUpdate); // Listener movido
+
 
     // Adiciona listener para fechar modais genéricos
     document.addEventListener('click', (e) => {
@@ -1318,6 +3043,7 @@ document.addEventListener('DOMContentLoaded', () => {
          // Modal de Escolha de Descrição
         const descChoiceModal = document.getElementById('desc-choice-modal');
          if (descChoiceModal && !descChoiceModal.classList.contains('hidden')) {
+            // Usa closest para pegar o botão correto, ou o overlay
             if (e.target.matches('.modal-overlay') || e.target.closest('#desc-choice-cancel-btn')) {
                  handleDescChoiceCancel(); // Usa o handler para limpar seleção
             }
@@ -1354,4 +3080,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 }); // Fim do DOMContentLoaded
-
