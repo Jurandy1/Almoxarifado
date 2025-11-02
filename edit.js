@@ -101,7 +101,6 @@ function initDomElements() {
 
 // --- FUNÇÕES UTILITÁRIAS (Normalização, Parse, etc.) ---
 const normalizeTombo = (tombo) => {
-    // ... (código original mantido)
     if (tombo === undefined || tombo === null || String(tombo).trim() === '') return '';
     let str = String(tombo).trim();
     if (/^0?\d+(\.0)?$/.test(str)) return String(parseInt(str, 10));
@@ -109,7 +108,6 @@ const normalizeTombo = (tombo) => {
 };
 
 function parseEstadoEOrigem(texto) {
-    // ... (código original mantido)
     const textoCru = (texto || '').trim();
     if (!textoCru) return { estado: 'Regular', origem: '' };
     const validEstados = ['Novo', 'Bom', 'Regular', 'Avariado'];
@@ -141,11 +139,17 @@ function parseEstadoEOrigem(texto) {
     return { estado: 'Regular', origem: '' };
 }
 
-// --- FUNÇÕES DE SIMILARIDADE E IA (MOVENDO carregarPadroesConciliacao PARA CIMA) ---
+// Função auxiliar para obter o caminho da coleção (Duplicado aqui para evitar erro de import circular)
+const getCollectionPath = (collectionName) => `artifacts/${auth.currentUser?.uid ? 'public' : 'default-app-id'}/data/${collectionName}`;
+
+
+// --- FUNÇÕES DE SIMILARIDADE E IA ---
 async function carregarPadroesConciliacao() {
+    // MUDANÇA: Usa a coleção correta no Firebase
+    if (!auth.currentUser) return; // Não carrega se não estiver autenticado (nem anonimamente)
     try {
         const q = query(
-            collection(db, 'padroesConciliacao'),
+            collection(db, getCollectionPath('padroesConciliacao')),
             orderBy('timestamp', 'desc'),
             limit(300)
         );
@@ -213,6 +217,8 @@ function calculateSimilarity(str1, str2) {
 }
 
 async function salvarPadraoConciliacao(systemItem, giapItem, score) {
+    // MUDANÇA: Usa a coleção correta no Firebase
+    if (!auth.currentUser || auth.currentUser.isAnonymous) return;
     const padrao = {
         descricaoSistema: systemItem.Descrição || '',
         fornecedorSistema: systemItem.Fornecedor || '',
@@ -226,7 +232,7 @@ async function salvarPadraoConciliacao(systemItem, giapItem, score) {
         usuario: auth.currentUser?.email || 'unknown'
     };
     try {
-        await addDoc(collection(db, 'padroesConciliacao'), padrao);
+        await addDoc(collection(db, getCollectionPath('padroesConciliacao')), padrao);
         padroesConciliacao.unshift({ ...padrao, timestamp: new Date() });
         if (padroesConciliacao.length > 300) {
             padroesConciliacao = padroesConciliacao.slice(0, 300);
@@ -564,20 +570,20 @@ function initializeTabContent(tabName) {
     }
 }
 
+// --- FIM: FUNÇÕES DE INICIALIZAÇÃO POR ABA ---
+
+
 // --- FUNÇÕES DE INICIALIZAÇÃO POR ABA ---
 
-// **NOVO:** Função auxiliar para atualizar o filtro de unidade
 function updateUnidadeFilterOptions() {
     if (!domCache.editFilterTipo || !domCache.editFilterUnidade) return;
 
     const selectedTipo = domCache.editFilterTipo.value;
-    // Guarda a unidade selecionada atualmente, se houver
     const currentSelectedUnidade = domCache.editFilterUnidade.value;
 
-    let unidadesOptions = ['<option value="">Todas as Unidades</option>']; // Começa com "Todas"
+    let unidadesOptions = ['<option value="">Todas as Unidades</option>'];
 
     if (selectedTipo) {
-        // Se um tipo foi selecionado, filtra as unidades
         const unidadesDoTipo = [...new Set((fullInventory || [])
             .filter(i => i.Tipo === selectedTipo)
             .map(i => i.Unidade))]
@@ -586,58 +592,48 @@ function updateUnidadeFilterOptions() {
         unidadesOptions.push(...unidadesDoTipo.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`));
         domCache.editFilterUnidade.disabled = false;
     } else {
-        // Se nenhum tipo foi selecionado, mostra todas as unidades
         const todasUnidades = [...new Set((fullInventory || []).map(i => i.Unidade))]
             .filter(Boolean)
             .sort();
         unidadesOptions.push(...todasUnidades.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`));
-        domCache.editFilterUnidade.disabled = false; // Mantém habilitado para selecionar qualquer unidade
+        domCache.editFilterUnidade.disabled = false;
     }
 
     domCache.editFilterUnidade.innerHTML = unidadesOptions.join('');
 
-    // Tenta restaurar a seleção anterior, se ela ainda for válida para o tipo atual
     if (domCache.editFilterUnidade.querySelector(`option[value="${currentSelectedUnidade}"]`)) {
         domCache.editFilterUnidade.value = currentSelectedUnidade;
     } else {
-        domCache.editFilterUnidade.value = ""; // Reseta para "Todas" se a anterior não for válida
+        domCache.editFilterUnidade.value = "";
     }
 }
 
 
 function initEditableInventoryTab() {
-    console.log("Initializing Editable Inventory Tab"); // LOG ADICIONAL
-    // Popula os filtros da aba editável
-    const tipos = [...new Set((fullInventory || []).map(i => i.Tipo))].filter(Boolean).sort(); // Fallback
+    console.log("Initializing Editable Inventory Tab");
+    const tipos = [...new Set((fullInventory || []).map(i => i.Tipo))].filter(Boolean).sort();
 
-    // Popula o filtro de Tipo
     if (domCache.editFilterTipo) {
         domCache.editFilterTipo.innerHTML = '<option value="">Todos os Tipos</option>' + tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
     }
 
-    // Popula o filtro de Unidade inicialmente (com todas) e adiciona o listener
-    updateUnidadeFilterOptions(); // Chama a nova função para popular inicialmente
+    updateUnidadeFilterOptions();
     if (domCache.editFilterTipo) {
-        // Adiciona listener para ATUALIZAR as unidades quando o TIPO mudar
         domCache.editFilterTipo.addEventListener('change', () => {
-             console.log("Filtro de tipo alterado."); // LOG ADICIONAL
+             console.log("Filtro de tipo alterado.");
             updateUnidadeFilterOptions();
-            // Dispara o filtro principal após atualizar as unidades
             applyFiltersAndPaginate();
         });
     }
 
 
-    // Aplica filtros/paginação iniciais e configura eventos
-    applyFiltersAndPaginate(); // Chama para renderizar a tabela inicial
-    setupEventDelegation(); // Configura os listeners otimizados
+    applyFiltersAndPaginate();
+    setupEventDelegation();
 }
 
-// ... (Restante do código de initUnitMappingTab, initReconciliationTab, etc., permanece o mesmo) ...
 function initUnitMappingTab() {
     console.log("Initializing Unit Mapping Tab");
-    populateUnitMappingTab(); // Chama a função original que popula a UI
-    // Adiciona listeners específicos desta aba aqui, se necessário
+    populateUnitMappingTab();
     document.getElementById('map-filter-tipo')?.addEventListener('change', updateSystemUnitOptions);
     document.getElementById('map-system-unit-select')?.addEventListener('change', updateGiapUnitOptions);
     document.getElementById('map-giap-filter')?.addEventListener('input', debounce(updateGiapUnitOptions, 300));
@@ -647,36 +643,32 @@ function initUnitMappingTab() {
 
 function initReconciliationTab() {
     console.log("Initializing Reconciliation Tab");
-    populateReconciliationTab(); // Chama a função original
-    // Adiciona listeners específicos
+    populateReconciliationTab();
     document.getElementById('filter-tipo')?.addEventListener('change', handleConciliationTypeChange);
     document.getElementById('load-conciliar')?.addEventListener('click', handleLoadConciliation);
     const debouncedRenderConciliation = debounce(renderConciliationLists, 300);
     document.getElementById('system-list-filter')?.addEventListener('input', debouncedRenderConciliation);
     document.getElementById('giap-list-filter')?.addEventListener('input', debouncedRenderConciliation);
     document.getElementById('clear-selections')?.addEventListener('click', handleClearConciliationSelections);
-    document.getElementById('save-links')?.addEventListener('click', () => savePendingLinks('unidade').then(handleSaveLinksResult)); // Chama savePendingLinks
+    document.getElementById('save-links')?.addEventListener('click', () => savePendingLinks('unidade').then(handleSaveLinksResult));
     document.getElementById('finish-reconciliation-btn')?.addEventListener('click', handleFinishReconciliation);
     document.getElementById('created-links')?.addEventListener('click', handleDeleteCreatedLink);
     document.getElementById('import-giap-btn')?.addEventListener('click', handleImportGiapItems);
 
-    // Listeners das sub-abas de conciliação
     const subNavButtonsConciliar = document.querySelectorAll('#content-conciliar .sub-nav-btn');
     subNavButtonsConciliar.forEach(button => {
         button.addEventListener('click', handleConciliationSubTabSwitch);
     });
 
-    // Adiciona listeners para a sub-aba Sobras
     document.getElementById('load-sobras-conciliar')?.addEventListener('click', renderSobrantesConciliation);
     const debouncedRenderSobrantes = debounce(renderSobrantesConciliation, 300);
     document.getElementById('sobras-system-list-filter')?.addEventListener('input', debouncedRenderSobrantes);
     document.getElementById('sobras-giap-list-filter')?.addEventListener('input', debouncedRenderSobrantes);
     document.getElementById('sobras-giap-type-filter')?.addEventListener('change', debouncedRenderSobrantes);
-    document.getElementById('sobras-save-links')?.addEventListener('click', () => savePendingLinks('sobras').then(handleSaveLinksResultSobras)); // Chama savePendingLinks
+    document.getElementById('sobras-save-links')?.addEventListener('click', () => savePendingLinks('sobras').then(handleSaveLinksResultSobras));
     document.getElementById('sobras-clear-selections')?.addEventListener('click', handleClearSobrantesSelections);
     document.getElementById('sobras-created-links')?.addEventListener('click', handleDeleteCreatedLinkSobras);
 
-     // Listeners sub-aba Itens a Tombar
     document.getElementById('tombar-filter-tipo')?.addEventListener('change', handleTombarFilterChange);
     document.getElementById('tombar-filter-unidade')?.addEventListener('change', renderItensATombar);
     document.getElementById('itens-a-tombar-container')?.addEventListener('click', handleConfirmTombamento);
@@ -700,64 +692,52 @@ function initSobrantesTab() {
         if (totalEl) totalEl.textContent = filtered.length;
         renderList('sobrando-list', filtered, 'TOMBAMENTO', 'Descrição', null, 'sobras');
     });
-    // Força a primeira busca se houver dados
     if(dataLoaded) document.getElementById('suggest-sobrando')?.click();
 }
 
 function initPendingTransfersTab() {
     console.log("Initializing Pending Transfers Tab");
-    populatePendingTransfersTab(); // Chama a função original
-    // Adiciona listeners específicos
+    populatePendingTransfersTab();
     document.getElementById('pending-transfers-container')?.addEventListener('click', handleTransferAction);
 }
 
 function initImportAndReplaceTab() {
     console.log("Initializing Import/Replace Tab");
-    populateImportAndReplaceTab(); // Chama a função original
-    // Adiciona listeners específicos
+    populateImportAndReplaceTab();
      const subNavButtonsImport = document.querySelectorAll('#content-importacao .sub-nav-btn');
      subNavButtonsImport.forEach(button => {
          button.addEventListener('click', handleImportSubTabSwitch);
      });
-     // Sub-aba Substituir
      document.getElementById('preview-replace-btn')?.addEventListener('click', handlePreviewReplace);
      document.getElementById('replace-confirm-checkbox')?.addEventListener('change', handleReplaceConfirmChange);
      document.getElementById('confirm-replace-btn')?.addEventListener('click', handleConfirmReplace);
-     // Sub-aba Editar por Descrição
      document.getElementById('preview-edit-by-desc-btn')?.addEventListener('click', handlePreviewEditByDesc);
      document.getElementById('edit-by-desc-preview-table-container')?.addEventListener('change', handleEditByDescCheckboxChange);
      document.getElementById('confirm-edit-by-desc-btn')?.addEventListener('click', handleConfirmEditByDesc);
-     // Sub-aba Importar por Tombamento
      document.getElementById('mass-transfer-search-btn')?.addEventListener('click', handleMassTransferSearch);
      document.getElementById('mass-transfer-set-all-status')?.addEventListener('change', handleMassTransferSetAllStatus);
      document.getElementById('mass-transfer-confirm-btn')?.addEventListener('click', handleMassTransferConfirm);
-     // Sub-aba Adicionar Unidade GIAP
      document.getElementById('save-giap-unit-btn')?.addEventListener('click', handleSaveGiapUnit);
 }
 
 function initNfTab() {
     console.log("Initializing NF Tab");
-    populateNfTab(); // Chama a função original
-    // Adiciona listeners específicos
-    const debouncedRenderNf = debounce(renderNfList, 300); // Já estava debounce
+    populateNfTab();
+    const debouncedRenderNf = debounce(renderNfList, 300);
     document.getElementById('nf-search')?.addEventListener('input', debouncedRenderNf);
     document.getElementById('nf-item-search')?.addEventListener('input', debouncedRenderNf);
     document.getElementById('nf-fornecedor-search')?.addEventListener('input', debouncedRenderNf);
-    // Para selects e datas, o debounce não é tão necessário, mas o lazy load vai ajudar mais
     document.getElementById('nf-tipo-entrada')?.addEventListener('change', renderNfList);
     document.getElementById('nf-status-filter')?.addEventListener('change', renderNfList);
     document.getElementById('nf-date-start')?.addEventListener('change', renderNfList);
     document.getElementById('nf-date-end')?.addEventListener('change', renderNfList);
     document.getElementById('clear-nf-filters-btn')?.addEventListener('click', handleClearNfFilters);
-
-    // **NOVO**: Listener delegado para lazy loading dos detalhes
-    domCache.nfContainer?.addEventListener('toggle', handleNfDetailsToggle, true); // Usa 'toggle' e captura
-
+    domCache.nfContainer?.addEventListener('toggle', handleNfDetailsToggle, true);
 }
 
 function initGiapTab() {
     console.log("Initializing GIAP Tab");
-    populateGiapTab(); // Chama a função original
+    populateGiapTab();
 }
 
 
@@ -796,8 +776,6 @@ function applyFiltersAndPaginate() {
 
 
     // LÓGICA ADAPTATIVA:
-    // Se filtrado = mostrar TODOS os resultados (para edição em massa)
-    // Se não filtrado = usar paginação (performance)
     if (isFiltered) {
         showAllItems = true;
         totalPages = 1;
@@ -979,8 +957,14 @@ function updatePaginationControls() {
 
     // Botão salvar
     if(domCache.saveAllChangesBtn) {
-        domCache.saveAllChangesBtn.disabled = dirtyItems.size === 0;
-        if (dirtyItems.size > 0) {
+        // MUDANÇA: Desabilita se for anônimo, independente do dirtyItems
+        const isAnonymous = auth.currentUser ? auth.currentUser.isAnonymous : true;
+        const isDisabled = dirtyItems.size === 0 || isAnonymous;
+
+        domCache.saveAllChangesBtn.disabled = isDisabled;
+        domCache.saveAllChangesBtn.title = isAnonymous ? "Faça login para salvar alterações" : (dirtyItems.size === 0 ? "Nenhuma alteração pendente" : "");
+
+        if (dirtyItems.size > 0 && !isAnonymous) {
             domCache.saveAllChangesBtn.textContent = `💾 Salvar ${dirtyItems.size} Alterações`;
             domCache.saveAllChangesBtn.classList.add('animate-pulse');
         } else {
@@ -1005,6 +989,19 @@ function setupEventDelegation() {
 
 // Handler separado para input
 function handleTableInput(e) {
+    // MUDANÇA: Bloqueia a edição no input se for anônimo
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        // Reverte o valor do campo para o original
+        const itemId = e.target.dataset.id;
+        const fieldName = e.target.dataset.field;
+        const originalItem = fullInventory.find(i => i.id === itemId);
+        if (originalItem) {
+             e.target.value = originalItem[fieldName] || '';
+        }
+        return;
+    }
+
     const field = e.target;
     if (!field.classList.contains('editable-field')) return;
 
@@ -1067,9 +1064,19 @@ function handleTableClick(e) {
     const syncBtn = e.target.closest('.sync-tombo-btn'); // NOVO
 
     if (deleteBtn) {
+         // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+        if (auth.currentUser?.isAnonymous) {
+            showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+            return;
+        }
         const itemId = deleteBtn.dataset.id;
         openDeleteConfirmModal([itemId]);
     } else if (syncBtn) { // NOVO Bloco
+         // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+        if (auth.currentUser?.isAnonymous) {
+            showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+            return;
+        }
         const itemId = syncBtn.dataset.syncId;
         handleSyncTombo(itemId, syncBtn); // Chama a nova função de sync
     }
@@ -1145,6 +1152,12 @@ async function handleSyncTombo(itemId, buttonEl) {
 
 // --- SALVAR ALTERAÇÕES EM LOTE ---
 async function saveAllChanges() {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return;
+    }
+
     if (dirtyItems.size === 0) {
         showNotification('Nenhuma alteração para salvar.', 'info');
         return;
@@ -1163,7 +1176,8 @@ async function saveAllChanges() {
             const chunkBatch = writeBatch(db);
 
             chunk.forEach(itemWithChanges => {
-                const docRef = doc(db, 'patrimonio', itemWithChanges.id);
+                // MUDANÇA: Usa a coleção correta no Firebase
+                const docRef = doc(db, getCollectionPath('patrimonio'), itemWithChanges.id);
                 // Pega o item ORIGINAL para comparar
                 const originalItem = fullInventory.find(i => i.id === itemWithChanges.id);
                 if (!originalItem) {
@@ -1260,6 +1274,12 @@ function goToPage(page) {
 
 // --- MODAL DE EXCLUSÃO ---
 function openDeleteConfirmModal(itemIds) {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return;
+    }
+
     currentDeleteItemIds = itemIds;
     const modal = document.getElementById('delete-confirm-modal-edit');
     const listEl = document.getElementById('delete-items-list');
@@ -1282,6 +1302,13 @@ function closeDeleteConfirmModal() {
 }
 
 async function confirmDeleteItems() {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        closeDeleteConfirmModal();
+        return;
+    }
+
     if (currentDeleteItemIds.length === 0) return;
 
     const count = currentDeleteItemIds.length;
@@ -1290,7 +1317,8 @@ async function confirmDeleteItems() {
     try {
         const batch = writeBatch(db);
         currentDeleteItemIds.forEach(id => {
-            batch.delete(doc(db, 'patrimonio', id));
+            // MUDANÇA: Usa a coleção correta no Firebase
+            batch.delete(doc(db, getCollectionPath('patrimonio'), id));
         });
         await batch.commit();
 
@@ -1336,6 +1364,12 @@ function handleDescChoiceCancel() {
 
 // **NOVA Função:** Salvar Vínculos Pendentes (Conciliação)
 async function savePendingLinks(context = 'unidade') {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return false;
+    }
+
     console.log(`Iniciando savePendingLinks para contexto: ${context}`); // LOG ADICIONAL
     if (linksToCreate.length === 0) {
         showNotification('Nenhum vínculo novo para salvar.', 'info');
@@ -1348,7 +1382,8 @@ async function savePendingLinks(context = 'unidade') {
     const patternsToSave = [];
 
     linksToCreate.forEach(link => {
-        const systemItemRef = doc(db, 'patrimonio', link.systemItem.id);
+        // MUDANÇA: Usa a coleção correta no Firebase
+        const systemItemRef = doc(db, getCollectionPath('patrimonio'), link.systemItem.id);
         const finalDesc = link.useGiapDescription
             ? (link.giapItem.Descrição || link.giapItem.Espécie || link.systemItem.Descrição)
             : link.systemItem.Descrição;
@@ -1364,7 +1399,7 @@ async function savePendingLinks(context = 'unidade') {
 
         batch.update(systemItemRef, updatedData);
         // Guarda dados para atualizar cache e array local
-        itemsToUpdateCache.push({ id: link.systemItem.id, changes: updatedData });
+        itemsToUpdateLocally.push({ id: link.systemItem.id, changes: updatedData });
 
         // Prepara padrão de conciliação para salvar
         const score = calculateSimilarity(
@@ -1410,8 +1445,6 @@ async function savePendingLinks(context = 'unidade') {
 
 
 // --- SEÇÃO ORIGINAL MANTIDA (Outras Abas) ---
-// (Cole as funções originais aqui, ajustando nomes se necessário para evitar conflitos)
-// ... (populateUnitMappingTab, updateSystemUnitOptions, etc., como na versão anterior) ...
 function populateUnitMappingTab() {
     // ... (código original mantido)
     const systemTypes = [...new Set((fullInventory || []).map(i => i.Tipo).filter(Boolean))].sort(); // Fallback
@@ -1605,13 +1638,11 @@ function populatePendingTransfersTab() {
 }
 
 function parsePtBrDate(dateStr) {
-    // ... (código original mantido)
     if (!dateStr || typeof dateStr !== 'string') return new Date(0);
     const parts = dateStr.split('/');
     if (parts.length === 3) {
         // Assume DD/MM/YYYY
         const year = parseInt(parts[2], 10);
-        // Heurística simples para ano com 2 dígitos
         const fullYear = year < 100 ? (year > 50 ? 1900 + year : 2000 + year) : year;
         return new Date(fullYear, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
     }
@@ -1619,7 +1650,6 @@ function parsePtBrDate(dateStr) {
     if(isoParts.length === 3) {
         return new Date(parseInt(isoParts[0], 10), parseInt(isoParts[1], 10) - 1, parseInt(isoParts[2], 10));
     }
-     // Tenta analisar como data/hora padrão JS se os formatos esperados falharem
     const parsedDate = new Date(dateStr);
     return isNaN(parsedDate) ? new Date(0) : parsedDate;
 }
@@ -2068,6 +2098,12 @@ function handleSelect(containerId, id, obj, element) {
 
 
     if (containerId.includes('system-list')) { // Se clicou na lista do Sistema (S/T)
+        // MUDANÇA: Bloqueia a ação se for anônimo
+         if (auth.currentUser?.isAnonymous) {
+             showNotification('Acesso negado. Ações de conciliação são apenas para usuários autenticados.', 'error');
+             return;
+         }
+
         clearGiapImportSelection(); // Limpa seleção de importação (se houver)
         selSys = { id, obj };
         selGiap = null; // Reseta seleção GIAP
@@ -2089,6 +2125,12 @@ function handleSelect(containerId, id, obj, element) {
         openDescriptionChoiceModal(); // Abre o modal para escolher a descrição
 
     } else if (containerId.includes('giap-list') && !selSys && !isSobrantesTab) { // Se clicou na lista GIAP SEM item do sistema selecionado (e não está na aba Sobras) -> MODO IMPORTAÇÃO
+         // MUDANÇA: Bloqueia a ação se for anônimo
+         if (auth.currentUser?.isAnonymous) {
+             showNotification('Acesso negado. Ações de importação são apenas para usuários autenticados.', 'error');
+             return;
+         }
+
         element.classList.toggle('selected-for-import'); // Alterna a classe de seleção para importação
         const index = giapItemsForImport.findIndex(item => item.TOMBAMENTO === id);
         if (index > -1) {
@@ -2105,6 +2147,11 @@ function handleSelect(containerId, id, obj, element) {
          element.classList.add('selected');
          selGiap = { tomb: id, obj }; // Guarda a seleção caso o próximo clique seja no sistema
     } else if (containerId.includes('system-list') && selGiap && isSobrantesTab) {
+         // MUDANÇA: Bloqueia a ação se for anônimo
+         if (auth.currentUser?.isAnonymous) {
+             showNotification('Acesso negado. Ações de conciliação são apenas para usuários autenticados.', 'error');
+             return;
+         }
          // Clicou num item do sistema DEPOIS de clicar num GIAP sobrando
          selSys = { id, obj };
          document.querySelectorAll(`${systemListSelector} .selected`).forEach(el => el.classList.remove('selected'));
@@ -2120,7 +2167,7 @@ function updateImportButton() {
     const btn = document.getElementById('import-giap-btn');
     const countEl = document.getElementById('giap-import-count');
     if(countEl) countEl.textContent = count;
-    if(btn) btn.disabled = count === 0;
+    if(btn) btn.disabled = count === 0 || auth.currentUser?.isAnonymous; // MUDANÇA: Desabilita se for anônimo
 }
 
 function clearGiapImportSelection() {
@@ -2251,12 +2298,17 @@ function renderItensATombar() {
 
     const groupedByTipo = itemsPendentes.reduce((acc, item) => {
         const tipoKey = item.Tipo || 'Sem Tipo';
-        if (!acc[tipoKey]) acc[tipoKey] = [];
+        if (!acc[tipoKey]) acc[tipoKey] = {};
         acc[tipoKey].push(item);
         return acc;
     }, {});
 
     let html = '';
+    // MUDANÇA: Verifica se é Admin (não anônimo) para mostrar o botão de confirmação
+    const isAnonymous = auth.currentUser?.isAnonymous;
+    const actionButton = isAnonymous ? '' : `<button data-id="${item.id}" class="confirmar-tombamento-btn text-xs bg-green-100 text-green-700 px-3 py-1 rounded-md hover:bg-green-200">Confirmar Tombamento</button>`;
+
+
     for (const tipo of Object.keys(groupedByTipo).sort()) {
         html += `<h3 class="text-lg font-bold text-slate-700 p-2 bg-slate-100 rounded-t-lg mt-4">${tipo}</h3>`;
 
@@ -2271,7 +2323,7 @@ function renderItensATombar() {
             html += `<details class="bg-white rounded-lg shadow-sm border mb-2" open><summary class="p-4 font-semibold cursor-pointer hover:bg-slate-50">${unidade}</summary>
                         <div class="p-2 border-t">
                             <table class="w-full text-sm">
-                                <thead><tr class="border-b"><th class="p-2 text-left">Descrição</th><th class="p-2 text-left">Novo Tombo</th><th class="p-2 text-left">Ação</th></tr></thead>
+                                <thead><tr class="border-b"><th class="p-2 text-left">Descrição</th><th class="p-2 text-left">Novo Tombo</th><th class="p-2 text-left">${isAnonymous ? 'Status' : 'Ação'}</th></tr></thead>
                                 <tbody>`;
 
             groupedByUnidade[unidade].forEach(item => {
@@ -2279,7 +2331,7 @@ function renderItensATombar() {
                             <td class="p-2">${escapeHtml(item.Descrição)}</td>
                             <td class="p-2 font-mono">${escapeHtml(item.Tombamento)}</td>
                             <td class="p-2">
-                                <button data-id="${item.id}" class="confirmar-tombamento-btn text-xs bg-green-100 text-green-700 px-3 py-1 rounded-md hover:bg-green-200">Confirmar Tombamento</button>
+                                ${isAnonymous ? '<span class="text-xs text-slate-500">Pendente</span>' : `<button data-id="${item.id}" class="confirmar-tombamento-btn text-xs bg-green-100 text-green-700 px-3 py-1 rounded-md hover:bg-green-200">Confirmar Tombamento</button>`}
                             </td>
                         </tr>`;
             });
@@ -2356,7 +2408,12 @@ function getFilteredSobrantes() {
 }
 
 function renderSobrantesConciliation() {
-     // ... (código original mantido)
+     // MUDANÇA: Bloqueia a ação se for anônimo
+     if (auth.currentUser?.isAnonymous) {
+         showNotification('Acesso negado. Ações de conciliação são apenas para usuários autenticados.', 'error');
+         return;
+     }
+
     const unidade = document.getElementById('sobras-filter-unidade').value;
     if (!unidade) {
         showNotification('Selecione uma unidade para carregar os itens S/T.', 'warning');
@@ -2398,6 +2455,12 @@ function renderSobrantesConciliation() {
 
 // Handlers da Aba Ligar Unidades
 async function handleSaveMapping() {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return;
+    }
+
     const mapSystemUnitSelect = document.getElementById('map-system-unit-select');
     const mapGiapUnitMultiselect = document.getElementById('map-giap-unit-multiselect');
     if (!mapSystemUnitSelect || !mapGiapUnitMultiselect) return; // Verifica
@@ -2408,7 +2471,8 @@ async function handleSaveMapping() {
     systemUnits.forEach(systemUnit => { unitMapping[systemUnit] = giapUnits; });
     try {
         if(domCache.feedbackStatus) domCache.feedbackStatus.innerHTML = `<div class="saving-spinner inline-block mr-2"></div> Salvando...`;
-        await setDoc(doc(db, 'config', 'unitMapping'), { mappings: unitMapping });
+        // MUDANÇA: Usa a coleção correta no Firebase
+        await setDoc(doc(db, getCollectionPath('config'), 'unitMapping'), { mappings: unitMapping });
         showNotification('Mapeamento salvo!', 'success');
         if(domCache.feedbackStatus) domCache.feedbackStatus.textContent = `Mapeamento salvo!`;
         populateUnitMappingTab(); // Re-renderiza a lista de mapeamentos salvos
@@ -2416,13 +2480,19 @@ async function handleSaveMapping() {
 }
 
 async function handleDeleteMapping(e) {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return;
+    }
     const deleteBtn = e.target.closest('.delete-mapping-btn');
     if (deleteBtn) {
         const systemUnit = (deleteBtn.dataset.systemUnit || '').trim();
         delete unitMapping[systemUnit];
         try {
             if(domCache.feedbackStatus) domCache.feedbackStatus.innerHTML = `<div class="saving-spinner inline-block mr-2"></div> Removendo...`;
-            await setDoc(doc(db, 'config', 'unitMapping'), { mappings: unitMapping });
+            // MUDANÇA: Usa a coleção correta no Firebase
+            await setDoc(doc(db, getCollectionPath('config'), 'unitMapping'), { mappings: unitMapping });
             showNotification(`Ligação removida.`, 'success');
             if(domCache.feedbackStatus) domCache.feedbackStatus.textContent = `Ligação removida.`;
             populateUnitMappingTab(); // Re-renderiza a lista
@@ -2528,6 +2598,12 @@ function handleSaveLinksResultSobras(success) { // Handler separado para Sobras
 
 
 async function handleFinishReconciliation() {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return;
+    }
+
     const unidadeEl = document.getElementById('filter-unidade');
     if (!unidadeEl) return; // Verifica
     const unidade = unidadeEl.value.trim();
@@ -2537,7 +2613,8 @@ async function handleFinishReconciliation() {
         if (unidade && !reconciledUnits.includes(unidade)) {
             reconciledUnits.push(unidade);
             try {
-                await setDoc(doc(db, 'config', 'reconciledUnits'), { units: reconciledUnits });
+                // MUDANÇA: Usa a coleção correta no Firebase
+                await setDoc(doc(db, getCollectionPath('config'), 'reconciledUnits'), { units: reconciledUnits });
                 showNotification(`Unidade "${unidade}" movida para a conciliação de sobras.`, 'info');
                 // Atualiza o select de unidades na aba principal de conciliação
                  handleConciliationTypeChange();
@@ -2595,6 +2672,12 @@ function handleDeleteCreatedLink(e) {
 }
 
 async function handleImportGiapItems() {
+     // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+     if (auth.currentUser?.isAnonymous) {
+         showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+         return;
+     }
+
      if (giapItemsForImport.length === 0) return showNotification('Nenhum item GIAP selecionado para importar.', 'warning');
 
     const tipo = activeConciliationType;
@@ -2610,7 +2693,9 @@ async function handleImportGiapItems() {
     const newItemsForCache = [];
 
     giapItemsForImport.forEach(giapItem => {
-        const newItemRef = doc(collection(db, 'patrimonio')); // Gera ID localmente
+        // MUDANÇA: Usa a coleção correta no Firebase
+        const patrimonioCollectionRef = collection(db, getCollectionPath('patrimonio'));
+        const newItemRef = doc(patrimonioCollectionRef); // Gera ID localmente
         const newItem = {
             id: newItemRef.id, // Adiciona o ID para cache
             Tombamento: giapItem.TOMBAMENTO || '', Descrição: giapItem.Descrição || giapItem.Espécie || '',
@@ -2703,38 +2788,6 @@ function populateTombarTabFilters() {
 }
 
 
-// Handlers da Aba Conciliar Sobras
-// function handleSaveLinksResultSobras(success) { // Removido, handleSaveLinksResult agora trata ambos os casos
-//      if (success) {
-//         showNotification('Vínculos salvos! Atualizando listas...', 'success');
-//         renderSobrantesConciliation();
-//         hideOverlay();
-//     }
-// }
-function handleClearSobrantesSelections() {
-     selSys = selGiap = null;
-    document.querySelectorAll('#sobras-system-list .selected').forEach(el => el.classList.remove('selected'));
-    document.querySelectorAll('#sobras-giap-list .selected').forEach(el => el.classList.remove('selected'));
-    showNotification('Seleções limpas.', 'info');
-     // Re-renderiza a lista GIAP sem sugestões
-     const filteredSobrantes = getFilteredSobrantes();
-     renderList('sobras-giap-list', filteredSobrantes, 'TOMBAMENTO', 'Descrição', null, 'sobras');
-}
-function handleDeleteCreatedLinkSobras(e) {
-    const deleteBtn = e.target.closest('.delete-link-btn');
-    if (!deleteBtn) return;
-    const index = parseInt(deleteBtn.dataset.index, 10);
-    const removedLink = linksToCreate.splice(index, 1)[0];
-    if (removedLink) {
-        const systemEl = document.querySelector(`#sobras-system-list div[data-id='${removedLink.systemItem.id}']`);
-        if (systemEl) systemEl.classList.remove('linked');
-        const giapEl = document.querySelector(`#sobras-giap-list div[data-id='${removedLink.giapItem.TOMBAMENTO}']`);
-        if (giapEl) giapEl.classList.remove('linked');
-    }
-    renderCreatedLinks('sobras');
-    showNotification('Vínculo removido.', 'info');
-}
-
 // Handlers da Aba Itens a Tombar
 function handleTombarFilterChange() {
     const tipo = document.getElementById('tombar-filter-tipo').value;
@@ -2750,13 +2803,20 @@ function handleTombarFilterChange() {
 }
 
 async function handleConfirmTombamento(e) {
+     // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+     if (auth.currentUser?.isAnonymous) {
+         showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+         return;
+     }
+
     const btn = e.target.closest('.confirmar-tombamento-btn');
     if (!btn) return;
     const id = btn.dataset.id;
     btn.disabled = true;
     btn.textContent = 'Salvando...';
     try {
-        const docRef = doc(db, 'patrimonio', id);
+        // MUDANÇA: Usa a coleção correta no Firebase
+        const docRef = doc(db, getCollectionPath('patrimonio'), id);
         await updateDoc(docRef, { etiquetaPendente: false });
         const itemInInventory = fullInventory.find(i => i.id === id);
         if(itemInInventory) itemInInventory.etiquetaPendente = false;
@@ -2773,6 +2833,12 @@ async function handleConfirmTombamento(e) {
 
 // Handlers da Aba Transferências
 async function handleTransferAction(e) {
+     // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+     if (auth.currentUser?.isAnonymous) {
+         showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+         return;
+     }
+
     const target = e.target;
     if (target.classList.contains('select-all-in-unit')) {
         const detailsContent = target.closest('details');
@@ -2795,7 +2861,8 @@ async function handleTransferAction(e) {
     if (actionButton.classList.contains('keep-selected-btn')) {
         actionDescription = `Mantendo ${selectedCheckboxes.length} iten(s) na unidade de origem...`;
         selectedCheckboxes.forEach(cb => {
-            const docRef = doc(db, 'patrimonio', cb.dataset.id);
+            // MUDANÇA: Usa a coleção correta no Firebase
+            const docRef = doc(db, getCollectionPath('patrimonio'), cb.dataset.id);
             const updateData = { Observação: 'Transferência GIAP ignorada manualmente.', updatedAt: serverTimestamp() };
             batch.update(docRef, updateData);
             itemsToUpdateLocally.push({ id: cb.dataset.id, changes: { Observação: 'Transferência GIAP ignorada manualmente.' } });
@@ -2803,7 +2870,8 @@ async function handleTransferAction(e) {
     } else if (actionButton.classList.contains('transfer-selected-btn')) {
         actionDescription = `Transferindo ${selectedCheckboxes.length} iten(s)...`;
         selectedCheckboxes.forEach(cb => {
-            const docRef = doc(db, 'patrimonio', cb.dataset.id);
+            // MUDANÇA: Usa a coleção correta no Firebase
+            const docRef = doc(db, getCollectionPath('patrimonio'), cb.dataset.id);
             const newUnit = cb.dataset.giapUnit;
             // Tenta encontrar o tipo da nova unidade
             const existingItemInNewUnit = fullInventory.find(i => i.Unidade === newUnit);
@@ -2904,10 +2972,17 @@ function handlePreviewReplace() {
 
 function handleReplaceConfirmChange(e) {
      const confirmBtn = document.getElementById('confirm-replace-btn');
-     if(confirmBtn) confirmBtn.disabled = !e.target.checked;
+     // MUDANÇA: Desabilita se for anônimo
+     confirmBtn.disabled = !e.target.checked || auth.currentUser?.isAnonymous;
 }
 
 async function handleConfirmReplace() {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return;
+    }
+
     const tipo = document.getElementById('replace-tipo').value;
     const unidade = document.getElementById('replace-unit').value.trim();
 
@@ -2920,13 +2995,16 @@ async function handleConfirmReplace() {
     const batch = writeBatch(db);
 
     itemsToDelete.forEach(item => {
-        const docRef = doc(db, 'patrimonio', item.id);
+        // MUDANÇA: Usa a coleção correta no Firebase
+        const docRef = doc(db, getCollectionPath('patrimonio'), item.id);
         batch.delete(docRef);
     });
 
     const newItemsAdded = []; // Para atualizar cache e array
     itemsToReplace.forEach(item => {
-        const newItemRef = doc(collection(db, 'patrimonio'));
+        // MUDANÇA: Usa a coleção correta no Firebase
+        const patrimonioCollectionRef = collection(db, getCollectionPath('patrimonio'));
+        const newItemRef = doc(patrimonioCollectionRef);
         const { estado, origem } = parseEstadoEOrigem(item.ESTADO);
         const newItemData = {
             Unidade: unidade, Tipo: tipo,
@@ -3064,7 +3142,8 @@ function handlePreviewEditByDesc() {
 
              if (resultsDiv) resultsDiv.classList.remove('hidden');
             const validCount = updatesToProcess.filter(u => u.status === 'ok' || u.status === 'tombo_not_in_giap').length;
-             if (confirmBtn) confirmBtn.disabled = validCount === 0;
+             // MUDANÇA: Desabilita se for anônimo
+             if (confirmBtn) confirmBtn.disabled = validCount === 0 || auth.currentUser?.isAnonymous;
              if (countEl) countEl.textContent = `${updatesToProcess.length} (Válidos para salvar: ${validCount})`;
 
 
@@ -3076,6 +3155,89 @@ function handlePreviewEditByDesc() {
              if (resultsDiv) resultsDiv.classList.add('hidden');
         }
     });
+}
+
+function renderEditByDescPreview(updates) {
+    // Função auxiliar para determinar a classe CSS da linha
+    const getRowClass = (status) => {
+        switch (status) {
+            case 'ok': return 'bg-white hover:bg-slate-50';
+            case 'not_found': return 'bg-yellow-100 hover:bg-yellow-200';
+            case 'multiple_found': return 'bg-yellow-200 hover:bg-yellow-300';
+            case 'tombo_in_use': return 'bg-red-100 hover:bg-red-200';
+            case 'tombo_wrong_location': return 'bg-orange-100 hover:bg-orange-200';
+            case 'tombo_not_in_giap': return 'bg-blue-100 hover:bg-blue-200'; // Novo estilo
+            case 'missing_desc': return 'bg-red-200 hover:bg-red-300';
+            default: return 'bg-slate-100';
+        }
+    };
+
+    // Função auxiliar para determinar o ícone de status
+    const getStatusIcon = (status) => {
+        switch (status) {
+            case 'ok': return '✅ OK';
+            case 'not_found': return '⚠️ Não Encontrado';
+            case 'multiple_found': return '⚠️ Correspondência Ambigua';
+            case 'tombo_in_use': return '❌ Tombo em Uso em Outro Item';
+            case 'tombo_wrong_location': return '🟠 Tombo Pertence a Outra Unidade GIAP';
+            case 'tombo_not_in_giap': return '🔵 Tombo Não Existe no GIAP';
+            case 'missing_desc': return '❌ Descrição Faltando';
+            default: return '❓ Erro Desconhecido';
+        }
+    };
+
+    // Começa a construção da tabela
+    let tableHtml = `
+        <table class="w-full text-sm border-collapse">
+            <thead class="bg-gradient-to-r from-slate-100 to-slate-200 sticky top-0 z-10 shadow-sm">
+                <tr>
+                    <th class="px-3 py-2 text-left w-1/12">Status</th>
+                    <th class="px-3 py-2 text-left w-2/12">Item do Sistema</th>
+                    <th class="px-3 py-2 text-left w-2/12">Tombo Planilha</th>
+                    <th class="px-3 py-2 text-left w-2/12">Nova Localização/Estado</th>
+                    <th class="px-3 py-2 text-left w-2/12">Tombo Destino</th>
+                    <th class="px-3 py-2 text-left w-2/12">Desc. GIAP (Se Houver)</th>
+                    <th class="px-3 py-2 text-center w-1/12">Usar Desc. GIAP</th>
+                </tr>
+            </thead>
+            <tbody id="edit-by-desc-table-body">
+    `;
+
+    updates.forEach(update => {
+        const rowClass = getRowClass(update.status);
+        const tomboDisplay = update.pastedData.tombamento || 'S/T';
+        const tomboDestino = update.systemItem ? update.systemItem.Tombamento || 'S/T' : 'N/A';
+        const descSistema = update.systemItem ? update.systemItem.Descrição || 'N/A' : 'N/A';
+        const descGiap = update.giapItem ? update.giapItem.Descrição || update.giapItem.Espécie : 'N/A';
+        const isEditable = update.systemItem && (update.status === 'ok' || update.status === 'tombo_not_in_giap');
+        const showGiapDescOption = isEditable && update.giapItem && descGiap !== 'N/A';
+        const isTomboChanged = isEditable && update.pastedData.tombamento !== tomboDestino;
+        const isLocalChanged = isEditable && update.pastedData.localizacao !== update.systemItem.Localização;
+        const isEstadoChanged = isEditable && update.pastedData.estado !== update.systemItem.Estado;
+
+
+        tableHtml += `
+            <tr class="${rowClass} border-b text-xs">
+                <td class="px-3 py-2 text-xs font-semibold">${getStatusIcon(update.status)}</td>
+                <td class="px-3 py-2">${escapeHtml(descSistema)} (${update.matchType})</td>
+                <td class="px-3 py-2 ${isTomboChanged ? 'font-bold text-blue-700' : ''}">${escapeHtml(tomboDisplay)}</td>
+                <td class="px-3 py-2">
+                    <span class="${isLocalChanged ? 'font-bold text-blue-700' : ''}">${escapeHtml(update.pastedData.localizacao || 'N/A')}</span> / 
+                    <span class="${isEstadoChanged ? 'font-bold text-blue-700' : ''}">${escapeHtml(update.pastedData.estado || 'N/A')}</span>
+                </td>
+                <td class="px-3 py-2 font-mono">${escapeHtml(tomboDestino)}</td>
+                <td class="px-3 py-2 text-slate-600">${escapeHtml(descGiap)}</td>
+                <td class="px-3 py-2 text-center">
+                    ${showGiapDescOption ? `
+                        <input type="checkbox" data-update-id="${update.id}" class="h-4 w-4 use-giap-desc-cb text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    ` : 'N/A'}
+                </td>
+            </tr>
+        `;
+    });
+
+    tableHtml += `</tbody></table>`;
+    document.getElementById('edit-by-desc-preview-table-container').innerHTML = tableHtml;
 }
 
 function handleEditByDescCheckboxChange(e) {
@@ -3090,6 +3252,12 @@ function handleEditByDescCheckboxChange(e) {
 }
 
 async function handleConfirmEditByDesc() {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return;
+    }
+
     const validUpdates = updatesToProcess.filter(u => u.status === 'ok' || u.status === 'tombo_not_in_giap'); // Inclui tombo_not_in_giap
     if(validUpdates.length === 0) return showNotification('Nenhum item válido para atualizar.', 'error');
 
@@ -3098,7 +3266,8 @@ async function handleConfirmEditByDesc() {
     const itemsToUpdateLocally = [];
 
     validUpdates.forEach(upd => {
-        const docRef = doc(db, 'patrimonio', upd.systemItem.id);
+        // MUDANÇA: Usa a coleção correta no Firebase
+        const docRef = doc(db, getCollectionPath('patrimonio'), upd.systemItem.id);
         const updatePayload = {
             // Tombamento SÓ é atualizado se for válido (não S/T e não 'tombo_not_in_giap')
             ...(upd.pastedData.tombamento && upd.pastedData.tombamento !== 'S/T' && upd.status !== 'tombo_not_in_giap' && { Tombamento: upd.pastedData.tombamento }),
@@ -3197,6 +3366,12 @@ function handleMassTransferSetAllStatus(e) {
 }
 
 async function handleMassTransferConfirm() {
+    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+    if (auth.currentUser?.isAnonymous) {
+        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+        return;
+    }
+
     const massTransferUnitEl = document.getElementById('mass-transfer-unit');
     const massTransferTipoEl = document.getElementById('mass-transfer-tipo');
      if (!massTransferUnitEl || !massTransferTipoEl) return; // Verifica
@@ -3217,7 +3392,9 @@ async function handleMassTransferConfirm() {
         const tombo = select.dataset.tombo;
         const giapItem = giapMap.get(tombo); // Busca normalizado
         if (giapItem) {
-            const newItemRef = doc(collection(db, 'patrimonio'));
+            // MUDANÇA: Usa a coleção correta no Firebase
+            const patrimonioCollectionRef = collection(db, getCollectionPath('patrimonio'));
+            const newItemRef = doc(patrimonioCollectionRef);
             const newItem = {
                 id: newItemRef.id, // Adiciona ID para cache
                 Tombamento: tombo, Descrição: giapItem.Descrição || giapItem.Espécie || '',
@@ -3256,6 +3433,12 @@ async function handleMassTransferConfirm() {
 }
 
 async function handleSaveGiapUnit() {
+     // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
+     if (auth.currentUser?.isAnonymous) {
+         showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
+         return;
+     }
+
      const nameInput = document.getElementById('add-giap-name');
      const numberInput = document.getElementById('add-giap-number');
      if (!nameInput || !numberInput) return; // Verifica
@@ -3278,7 +3461,8 @@ async function handleSaveGiapUnit() {
     const updatedCustomUnits = [...customGiapUnits, { name: newUnitName, number: newUnitNumber }];
 
     try {
-        const docRef = doc(db, 'config', 'customGiapUnits');
+        // MUDANÇA: Usa a coleção correta no Firebase
+        const docRef = doc(db, getCollectionPath('config'), 'customGiapUnits');
         await setDoc(docRef, { units: updatedCustomUnits });
         customGiapUnits.push({ name: newUnitName, number: newUnitNumber });
         showNotification('Nova unidade salva com sucesso!', 'success');
@@ -3315,45 +3499,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Adiciona listener de autenticação APRIMORADO (sem delay, sem authReady)
     addAuthListener(user => {
-        if (user) {
-            // --- USUÁRIO ESTÁ LOGADO ---
-            console.log("Auth state: Logged In");
+        // MUDANÇA: Agora precisamos verificar se o usuário NÃO é anônimo para ter acesso à edição
+        const isUserAdmin = user && !user.isAnonymous;
+
+        if (isUserAdmin) {
+            // --- USUÁRIO ESTÁ LOGADO (ADMIN) ---
+            console.log("Auth state: Logged In (Admin)");
             if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = user.email;
 
-            // Esconde a tela de "Acesso Negado"
             if (domCache.authGate) domCache.authGate.classList.add('hidden');
-
-            // --- MOSTRA O WRAPPER SÓ DEPOIS DOS DADOS ---
-            // if (domCache.appWrapper) domCache.appWrapper.classList.remove('hidden'); // <<-- REMOVIDO DAQUI
-
+            
             if (!dataLoaded) {
-                // Se os dados não foram carregados, mostra a tela de loading e carrega
                 console.log("User logged in, data not loaded. Fetching data...");
                 if (domCache.loadingScreen) domCache.loadingScreen.classList.remove('hidden');
                 if (domCache.feedbackStatus) domCache.feedbackStatus.textContent = "Usuário autenticado. Carregando dados...";
                 loadData(false); // Chama loadData, que agora é responsável por mostrar o appWrapper
             } else {
-                // Se os dados JÁ foram carregados (ex: HMR), só garante que loading está escondido
                 console.log("User logged in, data already loaded.");
                 if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden');
-                // **GARANTE** que o wrapper está visível neste caso também
                 if (domCache.appWrapper) domCache.appWrapper.classList.remove('hidden');
-                // Garante que a aba ativa seja inicializada caso ainda não tenha sido
                 const currentActiveTab = document.querySelector('#edit-nav .nav-btn.active')?.dataset.tab || 'edicao';
                 initializeTabContent(currentActiveTab);
             }
 
         } else {
-            // --- USUÁRIO NÃO ESTÁ LOGADO ---
-            console.log("Auth state: Logged Out");
-            if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = 'Não logado';
+            // --- USUÁRIO NÃO ESTÁ LOGADO OU É ANÔNIMO ---
+            console.log("Auth state: Logged Out or Anonymous. Access Denied.");
+            if (domCache.userEmailEdit) domCache.userEmailEdit.textContent = 'Acesso Negado';
 
             // Esconde a tela de loading e o app
             if (domCache.loadingScreen) domCache.loadingScreen.classList.add('hidden');
             if (domCache.appWrapper) domCache.appWrapper.classList.add('hidden');
 
             // Prepara e mostra a tela de "Acesso Negado"
-            const authGateMessage = `<div class="flex items-center justify-center h-screen"><div class="text-center p-8 bg-white rounded-lg shadow-xl"><h2 class="text-2xl font-bold text-red-600 mb-4">Acesso Negado</h2><p>Você precisa estar logado para acessar esta página.</p><p class="mt-2 text-sm">Volte para a página principal para fazer o login.</p></div></div>`;
+            const authGateMessage = `<div class="flex items-center justify-center h-screen"><div class="text-center p-8 bg-white rounded-lg shadow-xl"><h2 class="text-2xl font-bold text-red-600 mb-4">Acesso Negado</h2><p>Esta página é restrita a usuários com permissão de edição.</p><p class="mt-4 text-sm"><a href="index.html" class="text-blue-600 hover:underline">Voltar para a página principal.</a></p></div></div>`;
             if (domCache.authGate) {
                 domCache.authGate.innerHTML = authGateMessage;
                 domCache.authGate.classList.remove('hidden');
@@ -3371,22 +3550,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 domCache.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabName));
                 // Mostra/Esconde painéis de conteúdo
                 domCache.contentPanes.forEach(pane => {
-                     // Verifica se o ID do painel começa com 'content-' seguido pelo nome da aba
                      const paneId = pane.id || '';
                      pane.classList.toggle('hidden', !paneId.startsWith(`content-${tabName}`));
                 });
 
 
-                // Inicializa o conteúdo da aba SE necessário e SE logado/dados carregados
-                if (auth.currentUser && dataLoaded) {
+                // Inicializa o conteúdo da aba SE logado (ADMIN) e dados carregados
+                if (auth.currentUser && !auth.currentUser.isAnonymous && dataLoaded) {
                     initializeTabContent(tabName);
-                } else if (!auth.currentUser) {
-                     console.log("User not logged in, cannot initialize tab content.");
-                     showNotification("Faça login para acessar esta aba.", "warning");
-                } else {
-                     console.log("Data not ready, delaying tab initialization.");
-                      // Não mostra notificação, pois a tela de loading já está visível
                 }
+                // Não precisa de else, pois se não for admin/logado, o authGate está visível
             });
         });
     }
@@ -3420,10 +3593,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Adiciona listeners que dependem do DOM da Aba Otimizada ---
-    // (Movidos de initEditableInventoryTab para cá, pois dependem de initDomElements)
     const debouncedFilter = debounce(applyFiltersAndPaginate, DEBOUNCE_DELAY);
-    // **MODIFICADO:** Listener para tipo já está em initEditableInventoryTab
-    // document.getElementById('edit-filter-tipo')?.addEventListener('change', debouncedFilter); // <<-- REMOVIDO DAQUI
     domCache.editFilterUnidade?.addEventListener('change', debouncedFilter); // Adicionado listener para Unidade
     document.getElementById('edit-filter-estado')?.addEventListener('change', debouncedFilter);
     document.getElementById('edit-filter-descricao')?.addEventListener('input', debouncedFilter);
@@ -3440,6 +3610,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await loadData(true); // Recarrega os dados do servidor
         // A aba 'edicao' será reinicializada automaticamente pelo loadData -> initializeTabContent
     });
+    // MUDANÇA: Redireciona para index.html para que o login possa ser refeito (não há login nesta página)
     document.getElementById('logout-btn')?.addEventListener('click', () => { handleLogout(); window.location.href = 'index.html'; });
 
     document.getElementById('confirm-delete-edit-btn')?.addEventListener('click', confirmDeleteItems);
@@ -3447,4 +3618,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 }); // Fim do DOMContentLoaded
-
