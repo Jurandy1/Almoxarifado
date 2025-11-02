@@ -8,12 +8,11 @@
  */
 
 // Importações do módulo compartilhado
-import { db, auth, idb, CACHE_DURATION_MS, GIAP_SHEET_URL, loadFirebaseInventory, loadGiapInventory, normalizeStr as normalizeStrShared, escapeHtml as escapeHtmlShared } from './shared.js';
-import { addAuthListener, handleLogin, handleLogout, showNotification, normalizeStr, debounce, escapeHtml, parseCurrency } from './shared.js';
+import { db, auth, idb, CACHE_DURATION_MS, GIAP_SHEET_URL, loadFirebaseInventory, loadGiapInventory } from './shared.js';
+import { addAuthListener, handleLogin, handleLogout } from './shared.js';
+import { showNotification, normalizeStr, debounce, escapeHtml } from './shared.js';
 // Importações de bibliotecas do Firebase
-// MUDANÇA: Obtendo getCollectionPath diretamente do shared.js
 import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
 
 // --- ESTADO DA APLICAÇÃO ---
 let patrimonioFullList = [], historicoFullList = [], giapInventory = [];
@@ -50,11 +49,6 @@ const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
 const navButtons = document.querySelectorAll('#main-nav > .nav-btn, #main-nav > a.nav-btn');
 const contentPanes = document.querySelectorAll('main > .tab-content');
 const historyContainer = document.getElementById('history-container');
-
-
-// Função auxiliar para obter o caminho da coleção (Duplicado aqui para evitar erro de import circular no index.js)
-const getCollectionPath = (collectionName) => `artifacts/${auth.currentUser?.uid ? 'public' : 'default-app-id'}/data/${collectionName}`;
-
 
 // --- CARREGAMENTO DE DADOS ---
 async function loadAllData(forceRefresh = false) {
@@ -106,15 +100,9 @@ async function loadAllData(forceRefresh = false) {
 }
 
 async function loadHistory() {
-    // MUDANÇA: Usa a coleção pública para o histórico se for anônimo, ou privada/pública se logado.
-    if (!auth.currentUser) return; // Se não houver usuário logado (nem anônimo), sai.
-
+    if(!isLoggedIn) return;
     try {
-        const q = query(
-            collection(db, `artifacts/${auth.currentUser.uid}/public/data/historico`), 
-            orderBy("timestamp", "desc"), 
-            limit(100)
-        );
+        const q = query(collection(db, "historico"), orderBy("timestamp", "desc"), limit(100));
         const querySnapshot = await getDocs(q);
         historicoFullList = querySnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
         renderHistory();
@@ -140,11 +128,8 @@ function initializeUI() {
 function updateUIVisibility() {
     const loggedInElements = [adminActionsPatrimonio, document.getElementById('table-header-actions'), document.getElementById('nav-edit-link'), document.getElementById('nav-history')];
     
-    // MUDANÇA: Verifica se o usuário logado NÃO é anônimo para mostrar ações de Admin.
-    const isAnonymous = auth.currentUser ? auth.currentUser.isAnonymous : true;
-    
-    if (isLoggedIn && !isAnonymous) {
-        userEmailEl.textContent = auth.currentUser.email || 'Usuário Admin';
+    if (isLoggedIn) {
+        userEmailEl.textContent = auth.currentUser.email;
         userInfoEl.classList.remove('hidden'); userInfoEl.classList.add('flex');
         openLoginModalBtn.classList.add('hidden');
         loggedInElements.forEach(el => el && el.classList.remove('hidden'));
@@ -192,14 +177,10 @@ function renderPatrimonioTable() {
     const startIndex = (patrimonioCurrentPage - 1) * patrimonioItemsPerPage;
     const itemsToDisplay = patrimonioFilteredList.slice(startIndex, startIndex + patrimonioItemsPerPage);
     
-    // MUDANÇA: Verifica se o usuário NÃO é anônimo para mostrar ações
-    const isAnonymous = auth.currentUser ? auth.currentUser.isAnonymous : true;
-    const showActions = isLoggedIn && !isAnonymous;
-
-    const actionButtonsHTML = (itemId) => !showActions ? '' : `<td class="px-3 py-2 space-x-2"><button class="transfer-btn p-1 text-green-600 hover:text-green-800" data-id="${itemId}" title="Transferir Item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.5 1.5A.5.5 0 0 0 1 2v4.8a2.5 2.5 0 0 0 2.5 2.5h9.793l-3.347 3.346a.5.5 0 0 0 .708.708l4.2-4.2a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708.708L13.293 8.3H3.5a1.5 1.5 0 0 1-1.5-1.5V2a.5.5 0 0 0-.5-.5z"/></svg></button><button class="edit-btn p-1 text-blue-600 hover:text-blue-800" data-id="${itemId}" title="Editar Item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"/></svg></button><button class="delete-btn p-1 text-red-600 hover:text-red-800" data-id="${itemId}" title="Excluir Item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg></button></td>`;
+    const actionButtonsHTML = (itemId) => !isLoggedIn ? '' : `<td class="px-3 py-2 space-x-2"><button class="transfer-btn p-1 text-green-600 hover:text-green-800" data-id="${itemId}" title="Transferir Item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.5 1.5A.5.5 0 0 0 1 2v4.8a2.5 2.5 0 0 0 2.5 2.5h9.793l-3.347 3.346a.5.5 0 0 0 .708.708l4.2-4.2a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708.708L13.293 8.3H3.5a1.5 1.5 0 0 1-1.5-1.5V2a.5.5 0 0 0-.5-.5z"/></svg></button><button class="edit-btn p-1 text-blue-600 hover:text-blue-800" data-id="${itemId}" title="Editar Item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"/></svg></button><button class="delete-btn p-1 text-red-600 hover:text-red-800" data-id="${itemId}" title="Excluir Item"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg></button></td>`;
 
     tableBodyEl.innerHTML = itemsToDisplay.length === 0 
-        ? `<tr><td colspan="${showActions ? 7 : 6}" class="text-center py-10 text-slate-500">Nenhum item encontrado com os filtros atuais.</td></tr>`
+        ? `<tr><td colspan="${isLoggedIn ? 7 : 6}" class="text-center py-10 text-slate-500">Nenhum item encontrado com os filtros atuais.</td></tr>`
         : itemsToDisplay.map(item => `
             <tr class="border-b border-slate-200 hover:bg-slate-50">
                 <td class="px-3 py-2 font-mono text-xs">${item.Tombamento || 'S/T'}</td>
@@ -246,7 +227,10 @@ function renderDashboard(items) {
 }
 
 function renderHistory() {
-    // MUDANÇA: O loadHistory agora gerencia o requisito de autenticação. Apenas renderizamos.
+    if(!isLoggedIn) {
+        historyContainer.innerHTML = `<p class="text-slate-500">Acesso negado.</p>`;
+        return;
+    }
     historyContainer.innerHTML = historicoFullList.length > 0 
         ? historicoFullList.map(h => `
             <div class="p-3 border rounded-md bg-slate-50 text-sm">
@@ -256,23 +240,6 @@ function renderHistory() {
             </div>
         `).join('')
         : `<p class="text-slate-500">Nenhum histórico encontrado.</p>`;
-}
-
-function parsePtBrDate(dateStr) {
-    if (!dateStr || typeof dateStr !== 'string') return new Date(0);
-    const parts = dateStr.split('/');
-    if (parts.length === 3) {
-        // Assume DD/MM/YYYY
-        const year = parseInt(parts[2], 10);
-        const fullYear = year < 100 ? (year > 50 ? 1900 + year : 2000 + year) : year;
-        return new Date(fullYear, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-    }
-    const isoParts = dateStr.split('-'); // Assume YYYY-MM-DD
-    if(isoParts.length === 3) {
-        return new Date(parseInt(isoParts[0], 10), parseInt(isoParts[1], 10) - 1, parseInt(isoParts[2], 10));
-    }
-    const parsedDate = new Date(dateStr);
-    return isNaN(parsedDate) ? new Date(0) : parsedDate;
 }
 
 function populateNfTab() {
@@ -412,49 +379,21 @@ function openItemModal(item = null) {
 }
 
 async function logAction(action, details) {
-    if (!isLoggedIn || auth.currentUser.isAnonymous) return;
+    if (!isLoggedIn) return;
     try {
-        // MUDANÇA: Usa a coleção correta no Firebase
-        await addDoc(collection(db, `artifacts/${auth.currentUser.uid}/public/data/historico`), { 
-            ...details, 
-            action: action, 
-            user: auth.currentUser.email, 
-            timestamp: serverTimestamp() 
-        });
+        await addDoc(collection(db, 'historico'), { ...details, action: action, user: auth.currentUser.email, timestamp: serverTimestamp() });
     } catch (error) { console.error("Falha ao registrar ação no histórico:", error); }
 }
 
 async function handleFormSubmit(e) {
-    e.preventDefault(); 
-    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
-    if(!isLoggedIn || auth.currentUser.isAnonymous) {
-        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
-        return;
-    }
+    e.preventDefault(); if(!isLoggedIn) return;
     const id = itemForm['item-id'].value;
-    const itemData = { 
-        Tombamento: itemForm['item-tombamento'].value, 
-        Tipo: itemForm['item-tipo'].value, 
-        'Descrição': itemForm['item-descricao'].value, 
-        Unidade: itemForm['item-unidade'].value, 
-        Quantidade: parseInt(itemForm['item-quantidade'].value), 
-        Localização: itemForm['item-localizacao'].value, 
-        Estado: itemForm['item-estado'].value, 
-        Fornecedor: itemForm['item-fornecedor'].value, 
-        'Origem da Doação': itemForm['item-origem-da-doacao'].value, 
-        Observação: itemForm['item-observacao'].value, 
-        updatedAt: serverTimestamp() 
-    };
+    const itemData = { Tombamento: itemForm['item-tombamento'].value, Tipo: itemForm['item-tipo'].value, 'Descrição': itemForm['item-descricao'].value, Unidade: itemForm['item-unidade'].value, Quantidade: parseInt(itemForm['item-quantidade'].value), Localização: itemForm['item-localizacao'].value, Estado: itemForm['item-estado'].value, Fornecedor: itemForm['item-fornecedor'].value, 'Origem da Doação': itemForm['item-origem-da-doacao'].value, Observação: itemForm['item-observacao'].value, updatedAt: serverTimestamp() };
     const action = id ? 'Edição' : 'Criação';
     try {
-        // MUDANÇA: Usa a coleção correta no Firebase
-        const patrimonioCollectionRef = collection(db, `artifacts/${auth.currentUser.uid}/public/data/patrimonio`);
-        
-        if (id) await updateDoc(doc(patrimonioCollectionRef, id), itemData);
-        else { itemData.createdAt = serverTimestamp(); await addDoc(patrimonioCollectionRef, itemData); }
-        
+        if (id) await updateDoc(doc(db, 'patrimonio', id), itemData);
+        else { itemData.createdAt = serverTimestamp(); await addDoc(collection(db, 'patrimonio'), itemData); }
         logAction(action, { itemId: id || 'novo', itemDesc: itemData['Descrição'], details: `Item ${id ? 'editado' : 'criado'}: ${itemData['Descrição']}` });
-        
         closeModal(itemModal); await idb.metadata.clear(); loadAllData(true);
     } catch (error) { console.error("Erro ao salvar o item: ", error); showNotification('Erro ao salvar!', 'error');}
 }
@@ -467,20 +406,12 @@ function openDeleteModal(id) {
 }
 
 async function handleDelete() {
-    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
-    if(!isLoggedIn || auth.currentUser.isAnonymous) {
-        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
-        return;
-    }
+    if(!isLoggedIn) return;
     const id = confirmDeleteBtn.dataset.id;
     const item = patrimonioFullList.find(i => i.id === id);
     try {
-        // MUDANÇA: Usa a coleção correta no Firebase
-        const patrimonioDocRef = doc(db, `artifacts/${auth.currentUser.uid}/public/data/patrimonio`, id);
-        await deleteDoc(patrimonioDocRef);
-        
+        await deleteDoc(doc(db, 'patrimonio', id));
         logAction('Exclusão', { itemId: id, itemDesc: item.Descrição, details: `Item excluído: ${item.Descrição}` });
-        
         closeModal(deleteConfirmModal); await idb.metadata.clear(); loadAllData(true);
     } catch(error) { console.error("Erro ao excluir item: ", error); showNotification('Erro ao excluir!', 'error'); }
 }
@@ -503,23 +434,14 @@ function updateUnidadeFilter(tipoSelectEl, unidadeSelectEl) {
 }
 
 async function handleTransferSubmit(e) {
-    e.preventDefault(); 
-    // MUDANÇA: Bloqueia ações de escrita para usuários anônimos
-    if(!isLoggedIn || auth.currentUser.isAnonymous) {
-        showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
-        return;
-    }
+    e.preventDefault(); if(!isLoggedIn) return;
     const id = transferForm['transfer-item-id'].value;
     const newUnidade = transferForm['transfer-unidade'].value;
     const originalItem = patrimonioFullList.find(i => i.id === id);
     const updatedData = { Tipo: transferForm['transfer-tipo'].value, Unidade: newUnidade, Localização: transferForm['transfer-localizacao'].value, updatedAt: serverTimestamp() };
     try {
-        // MUDANÇA: Usa a coleção correta no Firebase
-        const patrimonioDocRef = doc(db, `artifacts/${auth.currentUser.uid}/public/data/patrimonio`, id);
-        await updateDoc(patrimonioDocRef, updatedData);
-        
+        await updateDoc(doc(db, 'patrimonio', id), updatedData);
         logAction('Transferência', { itemId: id, itemDesc: originalItem.Descrição, details: `De '${originalItem.Unidade}' para '${newUnidade}'` });
-        
         closeModal(transferModal); await idb.metadata.clear(); loadAllData(true);
     } catch (error) { console.error("Erro ao transferir item:", error); showNotification('Erro ao transferir!', 'error');}
 }
@@ -529,7 +451,7 @@ function switchTab(tabName) {
     navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabName));
     contentPanes.forEach(pane => pane.classList.toggle('hidden', pane.id !== `content-${tabName}`));
     if (tabName === 'dashboard' && patrimonioFullList.length > 0) renderDashboard(patrimonioFullList);
-    if (tabName === 'historico') loadHistory(); // MUDANÇA: Força o loadHistory ao entrar na aba
+    if (tabName === 'historico') renderHistory();
     if (tabName === 'notas') renderNfList();
 }
 
@@ -547,10 +469,6 @@ async function handleLoginFormSubmit(e) {
     
     const result = await handleLogin(email, password);
     if (result === true) {
-        // MUDANÇA: No ambiente Canvas, o login bem-sucedido não acontece via e-mail/senha.
-        // Se a função retornar true, significa que a UI pode ser atualizada.
-        // Como o login com e-mail/senha não é suportado no Canvas, este bloco será pouco usado.
-        // A autenticação ocorre principalmente via token na inicialização.
         closeModal(loginModal);
     } else {
         let errorMessage = "Ocorreu um erro desconhecido.";
@@ -569,17 +487,11 @@ async function handleLoginFormSubmit(e) {
 document.addEventListener('DOMContentLoaded', () => {
     // Adiciona o listener de autenticação
     addAuthListener(user => {
-        // MUDANÇA: isLoggedIn é true se houver qualquer usuário (anônimo ou não)
         isLoggedIn = !!user;
-        
-        // MUDANÇA: Verifica se o usuário logado é um usuário 'real' (não anônimo) para mostrar ações de Admin.
-        const isAdmin = user && !user.isAnonymous;
-        
         updateUIVisibility();
-
-        if (isAdmin) {
+        if (isLoggedIn) {
+            loadHistory();
             document.getElementById('tab-notas').style.display = 'inline-block';
-            populateNfTab();
         } else {
             document.getElementById('tab-notas').style.display = 'none';
         }
@@ -610,12 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Outros listeners
     paginationControlsEl.addEventListener('click', (e) => { if(e.target.dataset.page) { patrimonioCurrentPage = parseInt(e.target.dataset.page); renderPatrimonioTable(); }});
     tableBodyEl.addEventListener('click', (e) => {
-        const btn = e.target.closest('button'); 
-        // MUDANÇA: Verifica se é Admin (não anônimo)
-        if (!btn || !isLoggedIn || auth.currentUser.isAnonymous) {
-            if(btn && isLoggedIn) showNotification('Acesso negado. Ações de escrita são apenas para usuários autenticados.', 'error');
-            return;
-        }
+        const btn = e.target.closest('button'); if (!btn || !isLoggedIn) return;
         const id = btn.dataset.id;
         if (btn.classList.contains('edit-btn')) openItemModal(patrimonioFullList.find(i => i.id === id));
         if (btn.classList.contains('delete-btn')) openDeleteModal(id);
