@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DIRETORIA TÉCNICA DE ALMOXARIFADO E PATRIMÔNIO - SEMCAS</title>
+    
+    <!-- Scripts e Links -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" defer></script>
+    <!-- Dexie.js para Cache no IndexedDB -->
+    <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Estilo CSS Externo -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="text-slate-700 antialiased">
+
+    <!-- Header -->
+    <header class="header-banner sticky top-0 z-50 text-white p-4">
+        <div class="container mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <img src="https://www.saoluis.ma.gov.br/img/logo_mobile.png" alt="Logo Prefeitura" class="h-14 bg-white p-1 rounded-md shadow-md">
+                <div>
+                    <h1 class="text-xl md:text-2xl font-bold leading-tight">Diretoria de Almoxarifado e Patrimônio</h1>
+                    <p class="text-sm opacity-90">SEMCAS - São Luís</p>
+                </div>
+            </div>
+            <!-- Auth Section -->
+            <div id="auth-section">
+                <div id="user-info" class="hidden items-center gap-4">
+                    <span id="user-email" class="text-sm font-medium hidden md:block"></span>
+                    <button id="logout-btn" class="btn bg-red-500 hover:bg-red-600 text-white text-sm">Sair</button>
+                </div>
+                <button id="open-login-modal-btn" class="btn bg-white/20 hover:bg-white/30 text-white text-sm">Login</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Sub-Header de Status -->
+    <div class="bg-white shadow-sm border-b border-slate-200">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <h2 class="font-bold text-lg text-slate-800">Sistema de Patrimônio <span class="text-sm font-normal">v.12.1 </span></h2>
+            <div class="flex items-center gap-2">
+                <div id="status-feedback" class="font-semibold text-sm text-slate-600">Carregando...</div>
+                <button id="force-refresh-btn-index" title="Forçar Atualização dos Dados" class="p-2 rounded-md hover:bg-slate-100 text-slate-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navegação por Abas -->
+    <nav class="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky z-40 top-[92px] md:top-[88px]">
+        <div class="container mx-auto px-4">
+            <div id="main-nav" class="flex space-x-1 overflow-x-auto">
+                <button class="nav-btn active" data-tab="dashboard">📊 Dashboard</button>
+                <button class="nav-btn" data-tab="patrimonio">💼 Patrimônio</button>
+                <button id="tab-notas" class="nav-btn" style="display:none;" data-tab="notas">📋 Notas Fiscais</button>
+                <button id="nav-history" class="nav-btn hidden" data-tab="historico">📜 Histórico</button>
+                <a id="nav-edit-link" href="edit.html" target="_blank" class="nav-btn hidden">✏️ Auditoria e Edição</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Conteúdo Principal -->
+    <main class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- Dashboard -->
+        <div id="content-dashboard" class="tab-content fade-in">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="card text-center"><p class="text-sm text-slate-500 uppercase">Total de Itens</p><p id="kpi-total-itens" class="text-4xl font-bold text-blue-600 mt-2">0</p></div>
+                <div class="card text-center"><p class="text-sm text-slate-500 uppercase">Unidades Mapeadas</p><p id="kpi-total-unidades" class="text-4xl font-bold text-blue-600 mt-2">0</p></div>
+                <div class="card text-center"><p class="text-sm text-slate-500 uppercase">Itens Avariados</p><p id="kpi-total-avariados" class="text-4xl font-bold text-red-600 mt-2">0</p></div>
+                 <div class="card text-center"><p class="text-sm text-slate-500 uppercase">Itens Novos</p><p id="kpi-total-novos" class="text-4xl font-bold text-green-600 mt-2">0</p></div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="card"><h3 class="text-lg font-semibold text-slate-800 mb-4">Distribuição por Estado</h3><div class="relative h-96"><canvas id="dashboardEstadoChart"></canvas></div></div>
+                <div class="card"><h3 class="text-lg font-semibold text-slate-800 mb-4">Top 10 Unidades por Nº de Itens</h3><div class="relative h-96"><canvas id="dashboardTipoChart"></canvas></div></div>
+            </div>
+        </div>
+        
+        <!-- Patrimônio -->
+        <div id="content-patrimonio" class="tab-content hidden fade-in">
+             <div class="card mb-8">
+                 <form id="patrimonio-filters-form">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+                        <div><label for="filtro-tipo-unidade" class="block text-sm font-medium mb-1">Tipo de Unidade</label><select id="filtro-tipo-unidade" class="w-full p-2 border rounded-lg bg-white"></select></div>
+                        <div><label for="filtro-unidade" class="block text-sm font-medium mb-1">Unidade</label><select id="filtro-unidade" class="w-full p-2 border rounded-lg bg-white" disabled></select></div>
+                        <div><label for="filtro-estado" class="block text-sm font-medium mb-1">Estado</label><select id="filtro-estado" class="w-full p-2 border rounded-lg bg-white"></select></div>
+                    </div>
+                    <div class="mt-4 border-t pt-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                             <div class="md:col-span-2"><label for="filtro-busca" class="block text-sm font-medium mb-1">Busca Rápida (Descrição, Tombamento, Localização)</label><input type="text" id="filtro-busca" placeholder="Digite para buscar..." class="w-full p-2 border rounded-lg"></div>
+                             <div><label class="block text-sm font-medium mb-1">&nbsp;</label><button type="button" id="reset-filters-btn" class="w-full btn btn-secondary">Limpar Filtros</button></div>
+                        </div>
+                    </div>
+                 </form>
+                <div class="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div id="pagination-summary" class="text-sm font-semibold text-slate-600"></div>
+                    <div id="admin-actions-patrimonio" class="hidden w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+                        <button id="open-export-modal-btn" class="w-full sm:w-auto btn btn-success">Exportar PDF</button>
+                        <button id="open-add-modal-btn" class="w-full sm:w-auto btn btn-primary">Adicionar Item</button>
+                    </div>
+                </div>
+            </div>
+            
+            <main id="main-content-area" class="mt-2">
+                 <div class="card p-0 overflow-x-auto">
+                    <table class="table w-full text-sm">
+                        <thead class="bg-slate-50">
+                            <tr>
+                                <th class="p-3 text-left">Tomb.</th>
+                                <th class="p-3 text-left">Descrição</th>
+                                <th class="p-3 text-left">Unidade</th>
+                                <th class="p-3 text-left">Fornecedor</th>
+                                <th class="p-3 text-left">Doação</th>
+                                <th class="p-3 text-left">Estado</th>
+                                <th id="table-header-actions" class="p-3 text-left hidden">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-table-body"></tbody>
+                    </table>
+                </div>
+                <div id="pagination-controls" class="flex items-center justify-center mt-6"></div>
+            </main>
+        </div>
+        
+        <!-- Histórico -->
+        <div id="content-historico" class="tab-content hidden fade-in">
+             <div class="card">
+                <h3 class="text-xl font-bold text-slate-800 mb-4">Histórico de Alterações</h3>
+                <div id="history-container" class="space-y-3 max-h-[60vh] overflow-y-auto"></div>
+             </div>
+        </div>
+
+        <!-- Notas Fiscais -->
+        <div id="content-notas" class="tab-content hidden fade-in">
+            <div class="card">
+                <h2 class="text-xl font-bold text-slate-800 mb-2">📋 Notas Fiscais</h2>
+                <p class="text-sm text-slate-600 mb-4">Lista de notas fiscais da Planilha GIAP, agrupadas por categoria. Verifique quais itens já foram alocados no inventário.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 pb-4 border-b">
+                    <div>
+                        <label for="nf-search-index" class="block text-sm font-medium mb-1">Pesquisar por Nº da NF</label>
+                        <input type="text" id="nf-search-index" placeholder="Digite o número..." class="w-full p-2 border rounded-lg">
+                    </div>
+                    <div>
+                        <label for="nf-item-search-index" class="block text-sm font-medium mb-1">Pesquisar por Item</label>
+                        <input type="text" id="nf-item-search-index" placeholder="Digite o nome do item..." class="w-full p-2 border rounded-lg">
+                    </div>
+                    <div>
+                        <label for="nf-tipo-entrada-index" class="block text-sm font-medium mb-1">Tipo de Entrada</label>
+                        <select id="nf-tipo-entrada-index" class="w-full p-2 border rounded-lg bg-white">
+                            <option value="">Todas</option>
+                            <option value="Compra">Compra</option>
+                            <option value="Doação">Doação</option>
+                        </select>
+                    </div>
+                     <div class="self-end">
+                         <button id="clear-filters-nf-index" class="btn btn-secondary w-full">Limpar Filtros</button>
+                    </div>
+                    <div>
+                        <label for="nf-date-start-index" class="block text-sm font-medium mb-1">Data de Início (Cadastro)</label>
+                        <input type="date" id="nf-date-start-index" class="w-full p-2 border rounded-lg">
+                    </div>
+                    <div>
+                        <label for="nf-date-end-index" class="block text-sm font-medium mb-1">Data de Fim (Cadastro)</label>
+                        <input type="date" id="nf-date-end-index" class="w-full p-2 border rounded-lg">
+                    </div>
+                </div>
+
+                <div id="lista-notas" class="mt-4"></div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- MODAIS -->
+    <!-- MODAL DE LOGIN (CORRIGIDO E RESPONSIVO) -->
+    <div id="login-modal" class="modal fixed inset-0 z-[60] flex items-center justify-center p-4 hidden">
+        <div class="modal-overlay absolute inset-0 bg-black/60 opacity-0"></div>
+        <div class="modal-container bg-white w-full max-w-md mx-auto rounded-lg shadow-2xl flex flex-col transform scale-95 opacity-0">
+            <form id="login-form">
+                <div class="flex items-center justify-between p-5 border-b">
+                    <h3 class="text-xl font-semibold text-slate-800">Acesso Restrito</h3>
+                    <button type="button" class="p-2 rounded-full text-slate-500 hover:bg-slate-200 js-close-modal" aria-label="Fechar">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div id="login-error" class="hidden p-3 text-sm font-medium text-red-700 bg-red-100 rounded-lg"></div>
+                    <div>
+                        <label for="login-email" class="block text-sm font-medium mb-1 text-slate-700">Email</label>
+                        <input type="email" id="login-email" name="email" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required autofocus>
+                    </div>
+                    <div>
+                        <label for="login-password" class="block text-sm font-medium mb-1 text-slate-700">Senha</label>
+                        <input type="password" id="login-password" name="password" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                </div>
+                <div class="flex justify-end p-5 border-t bg-slate-50 rounded-b-lg">
+                    <button type="submit" id="btn-login" class="btn btn-primary w-full py-3 text-base flex items-center justify-center disabled:bg-slate-400">
+                        <span id="login-btn-text">Entrar</span>
+                        <span id="login-btn-spinner" class="hidden btn-spinner"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="item-modal" class="modal fixed inset-0 z-50 flex items-center justify-center p-4 hidden"> <div class="modal-overlay absolute inset-0 bg-black/60 opacity-0"></div> <div class="modal-container bg-white w-full max-w-2xl rounded-lg shadow-2xl flex flex-col transform scale-95 opacity-0"> <form id="item-form"> <div class="flex items-center justify-between p-4 border-b"> <h3 id="modal-title" class="text-xl font-semibold">Adicionar Novo Item</h3> <button type="button" class="p-2 rounded-full hover:bg-slate-200 js-close-modal">&times;</button> </div><div class="p-6 overflow-y-auto" style="max-height: 70vh;"> <input type="hidden" id="item-id"> <div class="grid grid-cols-1 sm:grid-cols-2 gap-4"> <div><label for="item-tombamento" class="block text-sm font-medium mb-1">Tombamento</label><input type="text" id="item-tombamento" class="w-full p-2 border rounded-lg" placeholder="Nº de tombamento ou S/T"></div><div><label for="item-tipo" class="block text-sm font-medium mb-1">Tipo de Unidade</label><input type="text" id="item-tipo" class="w-full p-2 border rounded-lg" placeholder="Ex: CRAS, CREAS, SEDE" required></div><div class="sm:col-span-2"><label for="item-descricao" class="block text-sm font-medium mb-1">Descrição</label><input type="text" id="item-descricao" class="w-full p-2 border rounded-lg" placeholder="Ex: Cadeira giratória, Mesa de escritório" required></div><div><label for="item-unidade" class="block text-sm font-medium mb-1">Unidade</label><input type="text" id="item-unidade" class="w-full p-2 border rounded-lg" placeholder="Ex: CRAS - Anil" required></div><div><label for="item-quantidade" class="block text-sm font-medium mb-1">Quantidade</label><input type="number" id="item-quantidade" value="1" min="1" class="w-full p-2 border rounded-lg" required></div><div><label for="item-localizacao" class="block text-sm font-medium mb-1">Localização</label><input type="text" id="item-localizacao" class="w-full p-2 border rounded-lg" placeholder="Ex: Sala da coordenação"></div><div><label for="item-estado" class="block text-sm font-medium mb-1">Estado de Conservação</label><select id="item-estado" class="w-full p-2 border rounded-lg bg-white" required><option>Bom</option><option>Regular</option><option>Avariado</option><option>Novo</option></select></div><div class="sm:col-span-2"><label for="item-fornecedor" class="block text-sm font-medium mb-1">Fornecedor</label><input type="text" id="item-fornecedor" class="w-full p-2 border rounded-lg" placeholder="Nome do fornecedor"></div><div class="sm:col-span-2"><label for="item-origem-da-doacao" class="block text-sm font-medium mb-1">Origem da Doação</label><input type="text" id="item-origem-da-doacao" class="w-full p-2 border rounded-lg" placeholder="Deixe em branco se não for doação"></div><div class="sm:col-span-2"><label for="item-observacao" class="block text-sm font-medium mb-1">Observação</label><textarea id="item-observacao" rows="3" class="w-full p-2 border rounded-lg" placeholder="Qualquer informação adicional"></textarea></div></div></div><div class="flex justify-end p-4 border-t bg-slate-50 rounded-b-lg space-x-2"> <button type="button" class="btn btn-secondary js-close-modal">Cancelar</button> <button type="submit" id="save-item-btn" class="btn btn-primary">Salvar Item</button> </div></form> </div></div>
+    <div id="transfer-modal" class="modal fixed inset-0 z-50 flex items-center justify-center p-4 hidden"> <div class="modal-overlay absolute inset-0 bg-black/60 opacity-0"></div> <div class="modal-container bg-white w-full max-w-lg rounded-lg shadow-2xl flex flex-col transform scale-95 opacity-0"> <form id="transfer-form"> <div class="flex items-center justify-between p-4 border-b"> <h3 class="text-xl font-semibold">Transferir Item</h3> <button type="button" class="p-2 rounded-full hover:bg-slate-200 js-close-modal">&times;</button> </div><div class="p-6 space-y-4"> <input type="hidden" id="transfer-item-id"> <div> <p class="text-sm text-slate-500">Item</p> <p id="transfer-item-description" class="font-bold text-slate-800"></p> </div><div> <p class="text-sm text-slate-500">Unidade Atual</p> <p id="transfer-item-current-unit" class="font-bold text-slate-800"></p> </div><hr> <h4 class="font-semibold text-slate-800 pt-2">Selecione o Novo Destino</h4> <div><label for="transfer-tipo" class="block text-sm font-medium mb-1">Novo Tipo de Unidade</label><select id="transfer-tipo" class="w-full p-2 border rounded-lg bg-white" required></select></div><div><label for="transfer-unidade" class="block text-sm font-medium mb-1">Nova Unidade</label><select id="transfer-unidade" class="w-full p-2 border rounded-lg bg-white" disabled required></select></div><div><label for="transfer-localizacao" class="block text-sm font-medium mb-1">Nova Localização na Unidade</label><input type="text" id="transfer-localizacao" class="w-full p-2 border rounded-lg" placeholder="Ex: Sala 02, Recepção" required></div></div><div class="flex justify-end p-4 border-t bg-slate-50 rounded-b-lg space-x-2"> <button type="button" class="btn btn-secondary js-close-modal">Cancelar</button> <button type="submit" class="btn btn-primary">Confirmar Transferência</button> </div></form> </div></div>
+    <div id="delete-confirm-modal" class="modal fixed inset-0 z-50 flex items-center justify-center p-4 hidden"> <div class="modal-overlay absolute inset-0 bg-black/60"></div> <div class="modal-container bg-white w-full max-w-md rounded-lg shadow-2xl flex flex-col transform scale-95"> <div class="p-6 text-center"> <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-4 text-red-500 w-14 h-14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /> </svg> <h3 class="mb-5 text-lg font-normal text-gray-600">Tem certeza que deseja excluir este item?</h3> <p id="delete-item-info" class="mb-5 text-sm font-bold text-gray-800"></p> <button id="confirm-delete-btn" type="button" class="btn btn-danger mr-2">Sim, excluir</button> <button type="button" class="btn btn-secondary js-close-modal">Cancelar</button> </div></div></div>
+
+    <!-- Script da Página (Módulo) -->
+    <script type="module" src="index.js"></script>
+</body>
+</html>
